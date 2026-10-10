@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #13110e;
+  --color-surface: #1a1713;
+  --color-raised: #231f19;
+  --color-line: #36312a;
+  --color-fg: #ece5d3;
+  --color-muted: #a59d89;
+  --color-faint: #6f685a;
+  --color-brass: #dba944;
+  --color-sage: #93b99d;
+  --color-clay: #e27d5d;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-sans: 'Newsreader', Georgia, serif;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+  body {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-brass) 35%, transparent);
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brass);
+    outline-offset: 2px;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brass) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-brass) 0%, transparent);
+  }
+}
+.rise {
+  animation: rise 0.45s ease both;
+}
+.halo {
+  animation: halo 2.4s ease-in-out infinite;
+}
+.paper-grain {
+  background-image: radial-gradient(color-mix(in srgb, var(--color-fg) 5%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+}

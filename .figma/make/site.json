@@ -1,0 +1,10 @@
+{
+  "description": "This adaptive learning platform personalizes educational paths for students, enabling mastery of subjects like Integral Calculus through tailored activities and assessments.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
