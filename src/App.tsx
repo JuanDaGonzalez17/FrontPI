@@ -37,7 +37,7 @@ export default function App() {
   const [panel, setPanel] = useState(false);
 
   const nav = useCallback((s: Screen) => setScreen(s), []);
-  useEffect(() => window.scrollTo(0, 0), [screen]);
+  useEffect(() => { window.scrollTo(0, 0); }, [screen]);
 
   const finishDiag = (answers: Answer[]) => {
     const by: Partial<Record<Id, { n: number; ok: number }>> = {};
