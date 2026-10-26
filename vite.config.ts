@@ -39,6 +39,14 @@ react(),
           '**/.figma/**',
 ],
       },
+      // Proxy CORS: redirige /api al backend de Cognia en localhost:8080 (Riesgo R1)
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
     preview: {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
