@@ -12,6 +12,7 @@
 import { apiGet, apiPost } from '../client';
 import type {
   DiagnosticSessionDto,
+  ActivityDto,
   AnswerPayload,
   AnswerResultDto,
   DiagnosticProfileDto,
@@ -22,7 +23,29 @@ import type {
  * El backend crea la sesión y devuelve las actividades de diagnóstico.
  */
 export function startDiagnostic(subjectId: string): Promise<DiagnosticSessionDto> {
-  return apiPost<DiagnosticSessionDto>(`/subjects/${subjectId}/diagnostic-sessions`);
+	return apiPost<{
+		session: { id: string; subjectId: string; state: string };
+		activities: {
+			id: string;
+			conceptId: string;
+			statement: string;
+			difficulty: number;
+			type: ActivityDto['tipo'];
+			options: { id: string; text: string }[];
+		}[];
+	}>(`/subjects/${subjectId}/diagnostics`).then(({ session, activities }) => ({
+		id: session.id,
+		subjectId: session.subjectId,
+		estado: session.state as DiagnosticSessionDto['estado'],
+		activities: activities.map((activity) => ({
+			id: activity.id,
+			conceptId: activity.conceptId,
+			enunciado: activity.statement,
+			dificultad: activity.difficulty,
+			tipo: activity.type,
+			options: activity.options,
+		})),
+	}));
 }
 
 /**
@@ -38,8 +61,8 @@ export function sendAnswer(
   payload: AnswerPayload,
 ): Promise<AnswerResultDto> {
   return apiPost<AnswerResultDto>(
-    `/diagnostic-sessions/${sessionId}/answers/${activityId}`,
-    payload,
+    `/diagnostics/${sessionId}/answers/${activityId}`,
+    { optionId: payload.optionId, answer: payload.respuesta, seconds: payload.seconds },
   );
 }
 
@@ -47,7 +70,7 @@ export function sendAnswer(
  * Finaliza la sesión de diagnóstico para que el backend calcule los niveles iniciales.
  */
 export function finishDiagnostic(sessionId: string): Promise<void> {
-  return apiPost<void>(`/diagnostic-sessions/${sessionId}/finish`);
+  return apiPost<void>(`/diagnostics/${sessionId}/finish`);
 }
 
 /**
@@ -56,6 +79,6 @@ export function finishDiagnostic(sessionId: string): Promise<void> {
  *
  * @param subjectId - UUID de la asignatura
  */
-export function getProfile(subjectId: string): Promise<DiagnosticProfileDto> {
-  return apiGet<DiagnosticProfileDto>(`/subjects/${subjectId}/diagnostic-profile`);
+export function getProfile(studentId: string, subjectId: string): Promise<DiagnosticProfileDto> {
+	return apiGet<DiagnosticProfileDto>(`/students/${studentId}/subjects/${subjectId}/knowledge-profile`);
 }

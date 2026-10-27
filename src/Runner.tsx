@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ArrowRight, Lock } from "lucide-react";
 import { byId, type Question } from "./data";
 import { Btn, FocusShell, Label, cx, type Tone } from "./ui";
+import { MathText } from "./components/MathText";
 
 export interface Answer {
   q: Question;
@@ -48,7 +49,7 @@ export function QuestionRunner({ questions, variant, kicker, title, onDone, onEx
           </span>
         )}
       </div>
-      <h2 className="mb-7 text-2xl leading-snug md:text-[28px]">{q.text}</h2>
+      <h2 className="mb-7 text-2xl leading-snug md:text-[28px]"><MathText text={q.text} /></h2>
       <div role="radiogroup" className="space-y-2.5">
         {q.options.map((o, k) => (
           <button
@@ -62,7 +63,7 @@ export function QuestionRunner({ questions, variant, kicker, title, onDone, onEx
             )}
           >
             <span className={cx("mt-0.5 font-mono text-xs", chosen === k ? "text-brass" : "text-faint")}>{"ABCD"[k]}</span>
-            <span className="text-lg">{o}</span>
+            <span className="text-lg"><MathText text={o} /></span>
           </button>
         ))}
       </div>

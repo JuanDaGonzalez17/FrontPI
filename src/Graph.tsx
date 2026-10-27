@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { CONCEPTS, byId, unlocks, type Id } from "./data";
 import { status, type Profile } from "./state";
 import { Bar, Btn, Label, Pill, StatusIcon, cx, pct, statusTone, type Tone } from "./ui";
+import { curriculumApi, buildConceptMaps } from "./api";
 
 const W = 204, H = 78, GX = 228, GY = 124, PAD = 10;
 const pos = (id: Id) => {
@@ -20,12 +22,46 @@ const NODE: Record<Tone, string> = {
 const NODE_TEXT: Record<Tone, string> = { sage: "text-sage", brass: "text-brass", clay: "text-clay", muted: "text-faint" };
 
 export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: Profile; selected?: Id | null; onSelect: (id: Id) => void; recognized?: Id[] }) {
+  const [prereqMap, setPrereqMap] = useState<Record<Id, Id[]>>(() => {
+    const m: Record<Id, Id[]> = {} as Record<Id, Id[]>;
+    CONCEPTS.forEach((c) => { m[c.id] = c.prereqs; });
+    return m;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const subjectId = '10000000-0000-0000-0000-000000000001';
+        const concepts = await curriculumApi.getConcepts(subjectId);
+        const maps = buildConceptMaps(concepts);
+        const next: Record<Id, Id[]> = {} as Record<Id, Id[]>;
+        CONCEPTS.forEach((c) => { next[c.id] = c.prereqs; });
+        await Promise.all(
+          concepts.map(async (concept) => {
+            const slug = maps.uuidToSlug.get(concept.id);
+            if (!slug) return;
+            const prereqs = await curriculumApi.getPrerequisites(concept.id);
+            const slugs = prereqs
+              .map((pr) => maps.uuidToSlug.get(pr.prerequisiteId))
+              .filter((s): s is Id => !!s);
+            next[slug] = slugs;
+          }),
+        );
+        if (!cancelled) setPrereqMap(next);
+      } catch {
+        // Fallback silencioso a los prerrequisitos estáticos del prototipo
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="overflow-x-auto pb-2">
       <div className="relative mx-auto" style={{ width: WIDTH, height: HEIGHT }}>
         <svg className="absolute inset-0" width={WIDTH} height={HEIGHT} aria-hidden>
           {CONCEPTS.flatMap((c) =>
-            c.prereqs.map((pr) => {
+            (prereqMap[c.id] ?? c.prereqs).map((pr) => {
               const a = pos(pr), b = pos(c.id);
               const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y;
               const done = status(p, pr) === "mastered";

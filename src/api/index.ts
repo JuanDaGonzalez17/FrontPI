@@ -24,6 +24,7 @@ export type {
   DiagnosticEstado,
   DiagnosticSessionDto,
   ConceptMasteryDto,
+  KnowledgeMasteryDto,
   DiagnosticProfileDto,
   PathStepEstado,
   LearningPathEstado,
@@ -46,6 +47,7 @@ export type {
 } from './types';
 
 // Servicios por dominio
+export * as authApi from './services/authApi';
 export * as curriculumApi from './services/curriculumApi';
 export * as diagnosticApi from './services/diagnosticApi';
 export * as learningPathApi from './services/learningPathApi';
@@ -53,3 +55,7 @@ export * as practiceApi from './services/practiceApi';
 export * as evaluationApi from './services/evaluationApi';
 export * as reviewApi from './services/reviewApi';
 export * as globalExamApi from './services/globalExamApi';
+
+// Mapeadores de dominio
+export * from './mappers/conceptMapper';
+export * as conceptMapper from './mappers/conceptMapper';

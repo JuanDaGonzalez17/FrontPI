@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, CalendarClock, Check, Compass, Lock, MapPin, Sparkles } from "lucide-react";
 import { CONCEPTS, byId, unlocks, type Id } from "./data";
 import { ConceptDetail, KnowledgeGraph, Legend } from "./Graph";
@@ -7,9 +7,12 @@ import {
   type EvalResult, type GlobalResult, type Profile, type ReviewResult, type Screen,
 } from "./state";
 import { Bar, Btn, Card, Label, PageHeader, Pill, Ring, StatusIcon, cx, pct, statusTone } from "./ui";
+import { curriculumApi } from "./api";
+import type { SubjectDto } from "./api/types";
 
 export interface Ctx {
   p: Profile;
+  studentName: string;
   nav: (s: Screen) => void;
   recognized: Id[];
   flash: string | null;
@@ -21,6 +24,16 @@ export interface Ctx {
   startReview: (id: Id) => void;
   finishActivities: () => void;
   continueAfterPass: () => void;
+  startDiagnostic: () => Promise<void>;
+  diagLoading: boolean;
+  ensurePath: () => Promise<void>;
+  pathLoading: boolean;
+  startShortEval: () => Promise<void>;
+  evalLoading: boolean;
+  startReviewSessionFlow: () => Promise<void>;
+  reviewLoading: boolean;
+  startGlobalExamFlow: () => Promise<void>;
+  globalExamLoading: boolean;
 }
 
 const SUBJECT = {
@@ -127,7 +140,7 @@ function ReviewsCard({ c }: { c: Ctx }) {
 export function Home({ c }: { c: Ctx }) {
   return (
     <div>
-      <PageHeader kicker="Martes 6 de octubre" title="Hola, Camila" sub="Esto es lo que sigue en tu ruta. Nada más." />
+      <PageHeader kicker={new Date().toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long" })} title={`Hola, ${c.studentName.split(" ")[0]}`} sub="Esto es lo que sigue en tu ruta. Nada más." />
       <div className="space-y-5">
         <NextStepCard c={c} />
         <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
@@ -167,10 +180,62 @@ function SubjectRow({ c }: { c: Ctx }) {
 }
 
 export function Subjects({ c }: { c: Ctx }) {
+  const [subjects, setSubjects] = useState<SubjectDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    curriculumApi
+      .getSubjects()
+      .then((data) => {
+        if (!cancelled) setSubjects(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "No se pudieron cargar las asignaturas.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div>
       <PageHeader kicker="Mis asignaturas" title="Elige qué estudiar" sub="Cada asignatura tiene su propio mapa de conceptos y su propio perfil de dominio." />
-      <Card className="p-6"><SubjectRow c={c} /></Card>
+      {loading && (
+        <Card className="p-6">
+          <div className="font-mono text-sm text-muted">Cargando asignaturas…</div>
+        </Card>
+      )}
+      {error && (
+        <Card className="p-6">
+          <div className="text-sm text-clay">{error}</div>
+        </Card>
+      )}
+      {!loading && !error && subjects.length > 0 && (
+        <div className="space-y-3">
+          {subjects.map((s) => (
+            <Card key={s.id} className="p-6">
+              <button onClick={() => c.nav("subject")} className="group flex w-full items-center gap-5 text-left">
+                <div className="flex-1">
+                  <div className="text-xl">{s.nombre}</div>
+                  <div className="text-[15px] text-muted">{s.descripcion}</div>
+                </div>
+                <Pill tone="brass">Disponible</Pill>
+                <ArrowRight size={18} className="text-faint transition group-hover:translate-x-1 group-hover:text-fg" />
+              </button>
+            </Card>
+          ))}
+        </div>
+      )}
+      {!loading && !error && subjects.length === 0 && (
+        <Card className="p-6">
+          <SubjectRow c={c} />
+        </Card>
+      )}
     </div>
   );
 }
@@ -226,7 +291,7 @@ export function DiagIntro({ c }: { c: Ctx }) {
           <div key={t} className="bg-surface p-5"><Label className="mb-2 text-brass">0{i + 1}</Label><div className="text-xl">{t}</div><p className="mt-1 text-[15px] text-muted">{d}</p></div>
         ))}
       </div>
-      <Btn size="lg" className="mt-10" onClick={() => c.nav("diag")} icon={<ArrowRight size={18} />}>Comenzar diagnóstico</Btn>
+      <Btn size="lg" className="mt-10" onClick={() => c.startDiagnostic()} disabled={c.diagLoading} icon={<ArrowRight size={18} />}>{c.diagLoading ? "Preparando…" : "Comenzar diagnóstico"}</Btn>
     </div>
   );
 }
@@ -304,6 +369,16 @@ export function PathNew({ c }: { c: Ctx }) {
 
 export function PathScreen({ c }: { c: Ctx }) {
   const { p } = c;
+  useEffect(() => {
+    c.ensurePath();
+  }, [c]);
+  if (c.pathLoading) {
+    return (
+      <div>
+        <PageHeader kicker="Mi ruta" title="Cargando ruta…" sub="Consultando el backend." />
+      </div>
+    );
+  }
   if (!p.diagnosed)
     return (
       <div>

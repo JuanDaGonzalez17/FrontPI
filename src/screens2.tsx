@@ -232,7 +232,7 @@ export function EvalIntro({ c }: { c: Ctx }) {
         </div>
         <p className="mt-6 text-[15px] text-muted">A diferencia de la práctica, aquí no verás retroalimentación hasta el final. Si no alcanzas el umbral, recibirás refuerzo dirigido y podrás intentarlo otra vez.</p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
-          <Btn size="lg" onClick={() => c.nav("eval")} icon={<ArrowRight size={18} />}>Comenzar evaluación</Btn>
+          <Btn size="lg" onClick={() => c.startShortEval()} disabled={c.evalLoading} icon={<ArrowRight size={18} />}>{c.evalLoading ? "Preparando…" : "Comenzar evaluación"}</Btn>
           <Btn variant="quiet" onClick={() => c.nav("concept")}>Practicar un poco más</Btn>
         </div>
       </div>
@@ -308,7 +308,7 @@ export function ReviewList({ c }: { c: Ctx }) {
                 {due.map(([id]) => (
                   <Card key={id} tone="brass" className="flex flex-wrap items-center justify-between gap-4 p-5">
                     <div><div className="text-xl">{byId(id).name}</div><div className="text-sm text-muted">Dominio {pct(p.mastery[id])} · 1 pregunta</div></div>
-                    <Btn disabled={!REVIEWS[id]} onClick={() => c.startReview(id)} icon={<ArrowRight size={16} />}>Repasar</Btn>
+                    <Btn disabled={!REVIEWS[id] || c.reviewLoading} onClick={() => c.startReviewSessionFlow()} icon={<ArrowRight size={16} />}>{c.reviewLoading ? "Preparando…" : "Repasar"}</Btn>
                   </Card>
                 ))}
               </div>
@@ -501,7 +501,7 @@ export function GlobalIntro({ c }: { c: Ctx }) {
         <h1 className="text-4xl font-medium leading-tight">¿Dominas la asignatura completa?</h1>
         <p className="mt-4 text-xl text-muted">Preguntas que mezclan conceptos de toda tu ruta. Determina si tu dominio general es suficiente y qué conviene seguir repasando.</p>
         <ul className="mt-6 space-y-2 text-lg"><li>· 6 preguntas de distintos conceptos</li><li>· Puntaje para aprobar: 70 / 100</li><li>· Sin pistas; el resultado llega al final</li></ul>
-        <div className="mt-8 flex gap-4"><Btn size="lg" onClick={() => c.nav("global")} icon={<ArrowRight size={18} />}>Comenzar</Btn><Btn variant="quiet" onClick={() => c.nav("final-ready")}>Volver</Btn></div>
+        <div className="mt-8 flex gap-4"><Btn size="lg" onClick={() => c.startGlobalExamFlow()} disabled={c.globalExamLoading} icon={<ArrowRight size={18} />}>{c.globalExamLoading ? "Preparando…" : "Comenzar"}</Btn><Btn variant="quiet" onClick={() => c.nav("final-ready")}>Volver</Btn></div>
       </div>
     </div>
   );

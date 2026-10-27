@@ -94,13 +94,22 @@ export interface ConceptMasteryDto {
   conceptId: string;
   conceptCodigo: string;
   conceptNombre: string;
-  masteryEstimado: number; // 0.0 – 1.0
+  masteryEstimado: number;
+}
+
+export interface KnowledgeMasteryDto {
+  conceptId: string;
+  mastery: number; // 0.0 – 1.0
+  totalEvaluations: number;
+  totalCorrect: number;
 }
 
 export interface DiagnosticProfileDto {
+  id: string;
+  studentId: string;
   subjectId: string;
-  masteryByConcepto: ConceptMasteryDto[];
-  overallMastery: number;
+  diagnosticCompleted: boolean;
+  concepts: KnowledgeMasteryDto[];
 }
 
 // ---------------------------------------------------------------------------

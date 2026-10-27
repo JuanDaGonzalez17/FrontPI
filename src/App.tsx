@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { BarChart3, BookMarked, CalendarClock, FlaskConical, Home as HomeIcon, Library, Route, X } from "lucide-react";
 import { CONCEPTS, DIAG, EVAL, GLOBAL_Q, REVIEWS, THRESH, byId, type Id } from "./data";
 import { QuestionRunner, type Answer } from "./Runner";
@@ -13,8 +13,21 @@ import {
   type EvalResult, type GlobalResult, type Profile, type ReviewResult, type Screen,
 } from "./state";
 import { Ring, cx, pct } from "./ui";
+import { DiagnosticRunner } from "./DiagnosticRunner";
+import { PracticeRunner } from "./PracticeRunner";
+import { EvalRunner } from "./EvalRunner";
+import { GlobalExamRunner } from "./GlobalExamRunner";
+import { ReviewRunner } from "./ReviewRunner";
+import { reviewApi, globalExamApi } from "./api";
+import { evaluationApi } from "./api";
+import { diagnosticApi, curriculumApi, learningPathApi } from "./api";
+import { buildConceptMaps, diagProfileToMastery, applyLearningPath, type ConceptMaps } from "./api/mappers/conceptMapper";
+import { useAuth } from "./context/AuthContext";
+import { CogniaApiError } from "./api/client";
+import type { ActivityDto, DiagnosticProfileDto, LearningPathDto, ShortEvalResultDto, ReviewQueueItemDto, ReviewFinishDto, GlobalExamResultDto } from "./api/types";
 
 const GOOD: Partial<Record<Id, number>> = { prim: 0.92, reglas: 0.85, metodos: 0.88, definida: 0.86, tfc: 0.84 };
+const SUBJECT_ID = "10000000-0000-0000-0000-000000000001";
 
 const NAV: { label: string; screen: Screen; icon: typeof HomeIcon; group: Screen[] }[] = [
   { label: "Inicio", screen: "home", icon: HomeIcon, group: ["home"] },
@@ -26,18 +39,377 @@ const NAV: { label: string; screen: Screen; icon: typeof HomeIcon; group: Screen
 const FOCUS: Screen[] = ["diag", "activity", "eval", "review", "global"];
 
 export default function App() {
+  const auth = useAuth();
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
-  const [p, setP] = useState<Profile>(diagnosed());
-  const [recognized, setRecognized] = useState<Id[]>(["prim", "reglas"]);
+  const [p, setP] = useState<Profile>(fresh());
+  const [recognized, setRecognized] = useState<Id[]>([]);
   const [evalResult, setEvalResult] = useState<EvalResult | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
   const [globalResult, setGlobalResult] = useState<GlobalResult | null>(null);
   const [reviewTarget, setReviewTarget] = useState<Id | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [panel, setPanel] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [diagSessionId, setDiagSessionId] = useState<string | null>(null);
+  const [diagActivities, setDiagActivities] = useState<ActivityDto[]>([]);
+  const [diagMaps, setDiagMaps] = useState<ConceptMaps | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [learningPath, setLearningPath] = useState<LearningPathDto | null>(null);
+  const [evalSessionId, setEvalSessionId] = useState<string | null>(null);
+  const [evalActivities, setEvalActivities] = useState<ActivityDto[]>([]);
+  const [evalLoading, setEvalLoading] = useState(false);
+  const [reviewSessionId, setReviewSessionId] = useState<string | null>(null);
+  const [reviewItems, setReviewItems] = useState<ReviewQueueItemDto[]>([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewAmnesia, setReviewAmnesia] = useState(false);
+  const [globalExamSessionId, setGlobalExamSessionId] = useState<string | null>(null);
+  const [globalExamActivities, setGlobalExamActivities] = useState<ActivityDto[]>([]);
+  const [globalExamLoading, setGlobalExamLoading] = useState(false);
 
   const nav = useCallback((s: Screen) => setScreen(s), []);
+
+  const startDiagnostic = useCallback(async () => {
+    setDiagLoading(true);
+    try {
+      const [session, concepts] = await Promise.all([
+        diagnosticApi.startDiagnostic(SUBJECT_ID),
+        curriculumApi.getConcepts(SUBJECT_ID),
+      ]);
+      setDiagSessionId(session.id);
+      setDiagActivities(session.activities);
+      setDiagMaps(buildConceptMaps(concepts));
+      nav("diag");
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "No se pudo iniciar el diagnóstico.");
+    } finally {
+      setDiagLoading(false);
+    }
+  }, [nav]);
+
+  const finishDiagnostic = useCallback(
+    async (profile: DiagnosticProfileDto) => {
+      if (diagMaps) {
+        const mastery = diagProfileToMastery(profile, diagMaps);
+        const nextProfile: Profile = {
+          ...fresh(),
+          diagnosed: profile.diagnosticCompleted,
+          mastery: { ...zero(), ...mastery },
+        };
+        nextProfile.current = firstOpen(nextProfile);
+        setP(nextProfile);
+        setRecognized(CONCEPTS.filter((k) => (mastery[k.id] ?? 0) >= THRESH).map((k) => k.id));
+      }
+      nav("diag-summary");
+    },
+    [diagMaps, nav],
+  );
+  const ensurePath = useCallback(async () => {
+    setPathLoading(true);
+    try {
+      let path;
+      try {
+        path = await learningPathApi.getActivePath(SUBJECT_ID);
+      } catch {
+        path = await learningPathApi.generatePath(SUBJECT_ID);
+      }
+      const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
+      const maps = buildConceptMaps(concepts);
+      setLearningPath(path);
+      setP((prev) => applyLearningPath(prev, path, maps));
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "No se pudo cargar la ruta de aprendizaje.");
+    } finally {
+      setPathLoading(false);
+    }
+  }, [nav]);
+
+  const startShortEval = useCallback(async () => {
+    setEvalLoading(true);
+    try {
+      let path = learningPath;
+      if (!path) {
+        try {
+          path = await learningPathApi.getActivePath(SUBJECT_ID);
+        } catch {
+          path = await learningPathApi.generatePath(SUBJECT_ID);
+        }
+        setLearningPath(path);
+      }
+      const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
+      const maps = buildConceptMaps(concepts);
+      const conceptId = p.current ? maps.slugToUuid.get(p.current) : null;
+      const step = path.steps.find((s) => s.conceptId === conceptId);
+      if (!step) throw new Error("No se encontró el paso actual en la ruta.");
+      const session = await evaluationApi.startShortEval(SUBJECT_ID, step.id);
+      setEvalSessionId(session.id);
+      setEvalActivities(session.activities);
+      nav("eval");
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "No se pudo iniciar la evaluación.");
+    } finally {
+      setEvalLoading(false);
+    }
+  }, [learningPath, p.current, nav]);
+
+  const finishEvalBackend = useCallback(
+    async (result: ShortEvalResultDto) => {
+      const id = p.current!;
+      const score = Math.round(result.score * 100);
+      const passed = result.passed;
+      setEvalResult({
+        id,
+        score,
+        passed,
+        skills: [],
+        weak: [],
+        attempt: p.evalAttempts + 1,
+        nextId: p.current,
+      });
+      setP((prev) => {
+        const np: Profile = { ...prev, mastery: { ...prev.mastery }, reviews: { ...prev.reviews }, history: [{ kind: "Evaluación", label: byId(id).name, score, passed, date: "Hoy" }, ...prev.history], evalAttempts: prev.evalAttempts + 1 };
+        if (passed) {
+          np.mastery[id] = result.score;
+          np.reinforce = prev.reinforce.filter((r) => r !== id);
+          if (hasBank(id)) np.reviews[id] = { dueIn: 1, fails: 0 };
+          np.weakSkills = [];
+          np.practiceDone = false;
+          np.reinforceDone = false;
+          np.current = firstOpen(np);
+        } else {
+          np.mastery[id] = (result.score || prev.mastery[id]) * 0.85;
+          np.reinforce = [...new Set([...prev.reinforce, id])];
+          np.reinforceDone = false;
+        }
+        return np;
+      });
+      nav("eval-result");
+    },
+    [p.current, p.evalAttempts, nav],
+  );
+
+  const startReviewSessionFlow = useCallback(async () => {
+    setReviewLoading(true);
+    try {
+      const session = await reviewApi.startReviewSession(SUBJECT_ID);
+      setReviewSessionId(session.id);
+      setReviewItems(session.items);
+      nav("review");
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "No se pudo iniciar el repaso.");
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [nav]);
+
+  const finishReviewBackend = useCallback(
+    async (result: ReviewFinishDto) => {
+      setReviewAmnesia(result.amnesiaDetectada);
+      if (result.amnesiaDetectada) {
+        await ensurePath();
+      }
+      let slug: Id = "metodos";
+      try {
+        const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
+        const maps = buildConceptMaps(concepts);
+        const mapped = reviewItems[0]?.conceptId ? maps.uuidToSlug.get(reviewItems[0].conceptId) : undefined;
+        if (mapped) slug = mapped;
+      } catch {
+        // fallback
+      }
+      setReviewResult({
+        id: slug,
+        ok: !result.amnesiaDetectada,
+        fails: 0,
+        nextDays: 1,
+        mastery: 0,
+        nextCurrent: null,
+        explain: result.amnesiaDetectada
+          ? "Se detectó amnesia conceptual. Tu ruta se ha adaptado."
+          : "Repaso completado correctamente.",
+      });
+      nav("review-result");
+    },
+    [reviewItems, ensurePath, nav],
+  );
+
+  const startGlobalExamFlow = useCallback(async () => {
+    setGlobalExamLoading(true);
+    try {
+      const session = await globalExamApi.startGlobalExam(SUBJECT_ID);
+      setGlobalExamSessionId(session.id);
+      setGlobalExamActivities(session.activities);
+      nav("global");
+    } catch (e) {
+      setFlash(e instanceof Error ? e.message : "No se pudo iniciar el examen global.");
+    } finally {
+      setGlobalExamLoading(false);
+    }
+  }, [nav]);
+
+  const finishGlobalExamBackend = useCallback(async (result: GlobalExamResultDto) => {
+    const score = Math.round(result.overallScore * 100);
+    const strong: Id[] = [];
+    const weak: Id[] = [];
+    for (const cm of result.masteryByConcepto) {
+      // map uuid to slug not available here; skip mapping, use conceptCodigo? ConceptMasteryDto has conceptCodigo
+      // We'll not push slugs to avoid byId errors; keep empty arrays for now
+    }
+    setGlobalResult({ score, strong, weak });
+    nav("global-result");
+  }, [nav]);
+
   useEffect(() => { window.scrollTo(0, 0); }, [screen]);
+
+  useEffect(() => {
+    if (auth.isLoading) return;
+    if (!auth.isAuthenticated || !auth.user) {
+      setProfileLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setProfileLoading(true);
+
+    const loadBackendProfile = async () => {
+      try {
+        const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
+        const maps = buildConceptMaps(concepts);
+        const backendProfile = await diagnosticApi.getProfile(auth.user!.id, SUBJECT_ID);
+        const mastery = diagProfileToMastery(backendProfile, maps);
+        let loadedProfile: Profile = {
+          ...fresh(),
+          diagnosed: backendProfile.diagnosticCompleted,
+          mastery: { ...zero(), ...mastery },
+        };
+        loadedProfile.current = firstOpen(loadedProfile);
+
+        if (backendProfile.diagnosticCompleted) {
+          try {
+            const path = await learningPathApi.getActivePath(SUBJECT_ID);
+            loadedProfile = applyLearningPath(loadedProfile, path, maps);
+          } catch (error) {
+            if (!(error instanceof CogniaApiError) || error.apiError.status !== 404) throw error;
+          }
+        }
+
+        if (!cancelled) {
+          setDiagMaps(maps);
+          setP(loadedProfile);
+          setRecognized(CONCEPTS.filter((concept) => loadedProfile.mastery[concept.id] >= THRESH).map((concept) => concept.id));
+          setFlash(null);
+        }
+      } catch (error) {
+        if (!cancelled && error instanceof CogniaApiError && error.apiError.status === 404) {
+          setP(fresh());
+          setRecognized([]);
+        } else if (!cancelled) {
+          setFlash(error instanceof Error ? error.message : "No se pudo cargar tu perfil desde el backend.");
+        }
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    };
+
+    void loadBackendProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.isLoading, auth.isAuthenticated, auth.user?.id]);
+
+  if (auth.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg text-fg">
+        <div className="font-mono text-sm text-muted">Cargando sesión…</div>
+      </div>
+    );
+  }
+
+  if (!auth.isAuthenticated) {
+    const submit = async (e: FormEvent) => {
+      e.preventDefault();
+      setAuthError(null);
+      setAuthSubmitting(true);
+      try {
+        if (authMode === "login") {
+          await auth.login(authEmail, authPassword);
+        } else {
+          await auth.register(authEmail, authPassword, authName);
+        }
+      } catch (err) {
+        setAuthError(err instanceof Error ? err.message : "Error de autenticación");
+      } finally {
+        setAuthSubmitting(false);
+      }
+    };
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg px-6 text-fg">
+        <div className="w-full max-w-md rounded-md border border-line bg-surface p-8">
+          <h1 className="text-2xl font-medium">Itinera</h1>
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-muted">Acceso al tutor adaptativo</p>
+          <form className="mt-6 space-y-4" onSubmit={submit}>
+            {authMode === "register" && (
+              <input
+                className="w-full rounded border border-line bg-bg px-3 py-2"
+                placeholder="Nombre completo"
+                value={authName}
+                onChange={(e) => setAuthName(e.target.value)}
+              />
+            )}
+            <input
+              className="w-full rounded border border-line bg-bg px-3 py-2"
+              placeholder="Email"
+              type="email"
+              value={authEmail}
+              onChange={(e) => setAuthEmail(e.target.value)}
+            />
+            <input
+              className="w-full rounded border border-line bg-bg px-3 py-2"
+              placeholder="Contraseña"
+              type="password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+            />
+            {authError && <p className="text-sm text-clay">{authError}</p>}
+            <button
+              type="submit"
+              disabled={authSubmitting}
+              className="w-full rounded bg-brass px-4 py-2 font-medium text-bg disabled:opacity-50"
+            >
+              {authSubmitting ? "Procesando…" : authMode === "login" ? "Iniciar sesión" : "Registrarse"}
+            </button>
+          </form>
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <button
+              type="button"
+              className="text-muted hover:text-fg"
+              onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}
+            >
+              {authMode === "login" ? "Crear cuenta" : "Ya tengo cuenta"}
+            </button>
+            <button type="button" className="text-muted hover:text-fg" onClick={auth.useDevAccount}>
+              Usar cuenta de prueba
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg text-fg">
+        <div className="font-mono text-sm text-muted">Cargando tu progreso…</div>
+      </div>
+    );
+  }
+
 
   const finishDiag = (answers: Answer[]) => {
     const by: Partial<Record<Id, { n: number; ok: number }>> = {};
@@ -210,7 +582,7 @@ export default function App() {
     }
   };
 
-  const ctx: Ctx = { p, nav, recognized, flash, clearFlash: () => setFlash(null), evalResult, reviewResult, globalResult, reviewTarget, startReview, finishActivities, continueAfterPass };
+  const ctx: Ctx = { p, studentName: auth.user?.fullName ?? "Estudiante", nav, recognized, flash, clearFlash: () => setFlash(null), evalResult, reviewResult, globalResult, reviewTarget, startReview, finishActivities, continueAfterPass, startDiagnostic, diagLoading, ensurePath, pathLoading, startShortEval, evalLoading, startReviewSessionFlow, reviewLoading, startGlobalExamFlow, globalExamLoading };
 
   const focus = FOCUS.includes(screen);
   let view;
@@ -219,25 +591,46 @@ export default function App() {
     case "subjects": view = <Subjects c={ctx} />; break;
     case "subject": view = <Subject c={ctx} />; break;
     case "diag-intro": view = <DiagIntro c={ctx} />; break;
-    case "diag": view = <QuestionRunner questions={DIAG} variant="diag" kicker="Diagnóstico inicial" title="Cálculo Integral" onDone={finishDiag} onExit={() => nav("diag-intro")} />; break;
+    case "diag":
+      view = diagLoading || !diagSessionId
+        ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando diagnóstico…</span></div>
+        : <DiagnosticRunner activities={diagActivities} sessionId={diagSessionId} subjectId={SUBJECT_ID} studentId={auth.user!.id} onDone={finishDiagnostic} onExit={() => nav("diag-intro")} />;
+      break;
     case "diag-summary": view = <DiagSummary c={ctx} />; break;
     case "path-new": view = <PathNew c={ctx} />; break;
     case "path": view = <PathScreen c={ctx} />; break;
     case "concept": view = p.current ? <ConceptScreen c={ctx} /> : <FinalReady c={ctx} />; break;
-    case "activity": view = <ActivityScreen c={ctx} />; break;
+    case "activity":
+      view = p.current
+        ? <PracticeRunner concept={p.current} onDone={finishActivities} onExit={() => nav("concept")} />
+        : null;
+      break;
     case "activities-done": view = <ActivitiesDone c={ctx} />; break;
     case "eval-intro": view = <EvalIntro c={ctx} />; break;
-    case "eval": view = <QuestionRunner questions={EVAL} variant="eval" kicker="Evaluación de dominio" title={p.current ? byId(p.current).name : ""} onDone={finishEval} onExit={() => nav("eval-intro")} exitLabel="Salir de la evaluación" />; break;
+    case "eval":
+      view = evalLoading || !evalSessionId
+        ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando evaluación…</span></div>
+        : <EvalRunner activities={evalActivities} sessionId={evalSessionId} onDone={finishEvalBackend} onExit={() => nav("eval-intro")} />;
+      break;
     case "eval-result": view = evalResult ? <EvalResultScreen c={ctx} /> : null; break;
     case "review-list": view = <ReviewList c={ctx} />; break;
-    case "review": view = reviewTarget ? <ReviewScreen c={ctx} onAnswer={answerReview} /> : null; break;
+    case "review":
+      view = reviewLoading || !reviewSessionId
+        ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando repaso…</span></div>
+        : <ReviewRunner items={reviewItems} sessionId={reviewSessionId} onDone={finishReviewBackend} onExit={() => nav("review-list")} />;
+      break;
     case "review-result": view = reviewResult ? <ReviewResultScreen c={ctx} /> : null; break;
     case "progress": view = <ProgressScreen c={ctx} />; break;
     case "final-ready": view = <FinalReady c={ctx} />; break;
     case "global-intro": view = <GlobalIntro c={ctx} />; break;
-    case "global": view = <QuestionRunner questions={GLOBAL_Q} variant="eval" kicker="Evaluación global" title="Cálculo Integral" onDone={finishGlobal} onExit={() => nav("global-intro")} exitLabel="Salir de la evaluación" />; break;
+    case "global":
+      view = globalExamLoading || !globalExamSessionId
+        ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando examen…</span></div>
+        : <GlobalExamRunner activities={globalExamActivities} examId={globalExamSessionId} onDone={finishGlobalExamBackend} onExit={() => nav("final-ready")} />;
+      break;
     case "global-result": view = globalResult ? <GlobalResultScreen c={ctx} /> : null; break;
     case "spec": view = <Spec onJump={jump} />; break;
+    default: view = <Home c={ctx} />; break;
   }
 
   const activeGroup = NAV.find((n) => n.group.includes(screen))?.screen;
