@@ -1,23 +1,24 @@
 import { useState } from "react";
 import { reviewApi } from "./api";
-import type { ReviewQueueItemDto, ReviewFinishDto } from "./api/types";
+import type { ReviewQueueItemDto, ReviewSessionResultDto, ReviewGradeSummaryDto } from "./api/types";
 import { Btn, FocusShell, Label, cx } from "./ui";
 import { ArrowRight } from "lucide-react";
 
 interface Props {
   items: ReviewQueueItemDto[];
   sessionId: string;
-  onDone: (result: ReviewFinishDto) => void;
+  onDone: (result: ReviewSessionResultDto) => void;
   onExit: () => void;
 }
 
 export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
   const [i, setI] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  const [grade, setGrade] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [amnesiaDetected, setAmnesiaDetected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionStart, setQuestionStart] = useState(Date.now());
+  const [grades, setGrades] = useState<ReviewGradeSummaryDto[]>([]);
 
   const item = items[i];
   const last = i === items.length - 1;
@@ -27,18 +28,21 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await reviewApi.submitGrade(sessionId, {
+      const gradeResult = await reviewApi.submitGrade(sessionId, {
         progressId: item.progressId,
         grade: g,
         seconds: Math.max(1, Math.round((Date.now() - questionStart) / 1000)),
       });
+      const detected = amnesiaDetected || gradeResult.recalculationTriggered;
+      setAmnesiaDetected(detected);
+      const completedGrades = [...grades, { progressId: item.progressId, grade: g, intervalDays: gradeResult.intervalDays, recalculationTriggered: gradeResult.recalculationTriggered }];
+      setGrades(completedGrades);
       if (last) {
         const res = await reviewApi.finishReviewSession(sessionId);
-        onDone(res);
+        onDone({ ...res, amnesiaDetectada: detected, grades: completedGrades });
       } else {
         setI(i + 1);
         setRevealed(false);
-        setGrade(null);
         setQuestionStart(Date.now());
       }
     } catch (e) {

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ArrowRight, Award, Check, Eye, Info, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
-import { ACTIVITIES, CONCEPTS, REINFORCE, REVIEWS, byId, norm, unlocks, type Activity, type Id } from "./data";
+import { ArrowRight, Award, Check, Eye, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
+import { REINFORCE, REVIEWS, byId, norm, unlocks, type Activity, type Id } from "./data";
 import type { Ctx } from "./screens";
-import { dueLabel, dueList, dueToday, levelOf, masteredCount, nextAction, overallMastery, status } from "./state";
+import { conceptDescription, conceptName, dueLabel, dueList, dueToday, isRouteComplete, levelOf, routeConceptCount, routeConcepts, routeMasteredCount, nextAction, overallMastery, status } from "./state";
 import { Bar, Btn, Card, CycleStrip, Difficulty, Expr, FocusShell, Label, Mark, PageHeader, Pill, Ring, StatusIcon, cx, pct } from "./ui";
 
 const reinforceList = (weak: string[]) => {
@@ -10,22 +10,11 @@ const reinforceList = (weak: string[]) => {
   return f.length ? f : REINFORCE;
 };
 
-function SampleBanner({ id }: { id: Id }) {
-  if (id === "metodos") return null;
-  return (
-    <div className="mb-6 flex items-start gap-2 rounded-sm border border-line bg-raised px-4 py-3 text-sm text-muted">
-      <Info size={15} className="mt-0.5 shrink-0" />
-      Prototipo: para este concepto se reutilizan las actividades y la evaluación de muestra de “Métodos de integración”.
-    </div>
-  );
-}
-
 export function ConceptScreen({ c }: { c: Ctx }) {
   const { p } = c;
   if (!p.current) return null;
   const k = byId(p.current);
   const reinf = p.reinforce.includes(k.id);
-  const acts = reinf ? reinforceList(p.weakSkills) : ACTIVITIES;
   const done = reinf ? p.reinforceDone : p.practiceDone;
   const tone = reinf ? "clay" : "brass";
   const cta = reinf
@@ -33,16 +22,15 @@ export function ConceptScreen({ c }: { c: Ctx }) {
     : p.practiceDone ? { l: "Realizar evaluación del concepto", go: () => c.nav("eval-intro") } : { l: "Comenzar", go: () => c.nav("activity") };
   return (
     <div>
-      <SampleBanner id={k.id} />
       <div className="rise mb-8">
         <div className="mb-3 flex items-center gap-3"><Label className={reinf ? "text-clay" : "text-brass"}>{reinf ? "Concepto en refuerzo" : "Concepto actual"}</Label><Pill tone={tone}>{nextAction(p).state}</Pill></div>
-        <h1 className="text-4xl font-medium leading-tight md:text-5xl">{k.name}</h1>
+        <h1 className="text-4xl font-medium leading-tight md:text-5xl">{conceptName(p, k.id)}</h1>
       </div>
       <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
         <div className="space-y-8">
           <section>
             <Label className="mb-2">Objetivo de aprendizaje</Label>
-            <p className="border-l-2 border-brass pl-5 text-2xl italic leading-snug">“{k.objective}”</p>
+            <p className="border-l-2 border-brass pl-5 text-2xl italic leading-snug">“{conceptDescription(p, k.id)}”</p>
           </section>
           {reinf ? (
             <section>
@@ -75,14 +63,7 @@ export function ConceptScreen({ c }: { c: Ctx }) {
           <section>
             <Label className="mb-3">{reinf ? "Actividades de refuerzo" : "Actividades recomendadas"}</Label>
             <ol className="divide-y divide-line rounded-md border border-line bg-surface">
-              {acts.map((a, i) => (
-                <li key={a.id} className="flex items-center gap-4 px-5 py-4">
-                  <span className="font-mono text-sm text-faint">0{i + 1}</span>
-                  <div className="flex-1"><div className="text-lg">{a.title}</div><div className="text-sm text-muted">{a.skill}</div></div>
-                  <Difficulty n={a.difficulty} />
-                  {done && <Check size={16} className="text-sage" />}
-                </li>
-              ))}
+              <li className="px-5 py-4 text-muted">Las actividades y el refuerzo se cargarán desde tu ruta cuando comiences.</li>
             </ol>
           </section>
           <div className="flex flex-wrap items-center gap-4">
@@ -220,11 +201,10 @@ export function EvalIntro({ c }: { c: Ctx }) {
   const rules: [string, string][] = [["6", "preguntas"], ["70", "puntaje para avanzar"], [`#${p.evalAttempts + 1}`, "intento"], ["0", "pistas"]];
   return (
     <div className="mx-auto max-w-2xl py-4">
-      <SampleBanner id={k.id} />
       <div className="rounded-md border border-line bg-surface p-8 md:p-10" style={{ borderTop: "4px solid var(--color-brass)" }}>
         <div className="mb-6 flex items-center justify-between"><Label className="text-brass">Evaluación de dominio</Label><ShieldCheck size={18} className="text-brass" /></div>
         <Label className="mb-1">Concepto</Label>
-        <h1 className="text-4xl font-medium leading-tight">{k.name}</h1>
+        <h1 className="text-4xl font-medium leading-tight">{conceptName(p, k.id)}</h1>
         <Label className="mb-1 mt-8">Objetivo</Label>
         <p className="text-xl text-muted">Demostrar que puedes resolver problemas relacionados con este concepto de forma autónoma.</p>
         <div className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-line bg-line md:grid-cols-4">
@@ -245,12 +225,11 @@ export function EvalResultScreen({ c }: { c: Ctx }) {
   const k = byId(r.id);
   const pass = r.passed;
   const tone = pass ? "sage" : "clay";
-  const recs = reinforceList(r.weak);
   const next = r.nextId ? byId(r.nextId) : null;
   return (
     <div className="mx-auto max-w-3xl">
       <div className="rise">
-        <Label className="mb-6">Evaluación de dominio · {k.name} · intento {r.attempt}</Label>
+        <Label className="mb-6">Evaluación de dominio · {conceptName(c.p, k.id)} · intento {r.attempt}</Label>
         <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
           <div className="flex items-baseline gap-2"><span className={cx("text-[96px] font-medium leading-none tracking-tight md:text-[120px]", pass ? "text-sage" : "text-clay")}>{r.score}</span><span className="text-3xl text-muted">/ 100</span></div>
           <div className={cx("mb-3 -rotate-2 rounded-sm border-2 px-4 py-2 font-mono text-sm uppercase tracking-[0.14em]", pass ? "border-sage text-sage" : "border-clay text-clay")}>{pass ? "Concepto aprobado ✓" : "Necesita refuerzo"}</div>
@@ -263,6 +242,7 @@ export function EvalResultScreen({ c }: { c: Ctx }) {
       <section className="mt-10">
         <Label className="mb-3">{pass ? "Desempeño por habilidad" : "Qué habilidades necesitan refuerzo"}</Label>
         <div className="divide-y divide-line rounded-md border border-line bg-surface">
+          {r.skills.length === 0 && <div className="px-5 py-4 text-muted">El backend no envió un desglose por habilidad para este intento.</div>}
           {r.skills.map((s) => {
             const good = s.ok === s.n;
             return (<div key={s.skill} className="flex items-center gap-4 px-5 py-3.5"><Mark ok={good} /><span className="flex-1 text-lg">{s.skill}</span><span className="font-mono text-sm text-muted">{s.ok} / {s.n}</span>{!good && <Pill tone="clay">Reforzar</Pill>}</div>);
@@ -273,16 +253,14 @@ export function EvalResultScreen({ c }: { c: Ctx }) {
       {pass ? (
         <section className="mt-10">
           <Card className="flex flex-wrap items-center justify-between gap-5 p-6">
-            <div><Label className="mb-1">Siguiente en tu ruta</Label><div className="text-2xl">{next ? next.name : "Evaluación global"}</div><p className="text-muted">{next ? "Se desbloqueó con este resultado. Además programamos un primer repaso de este concepto." : "Has dominado todo tu mapa."}</p></div>
+            <div><Label className="mb-1">Siguiente en tu ruta</Label><div className="text-2xl">{next ? conceptName(c.p, next.id) : "Evaluación global"}</div><p className="text-muted">{next ? "Se desbloqueó con este resultado." : "Has dominado todos los conceptos de tu ruta."}</p></div>
             <Btn size="lg" onClick={c.continueAfterPass} icon={<ArrowRight size={18} />}>Continuar con la ruta</Btn>
           </Card>
         </section>
       ) : (
         <section className="mt-10">
-          <Label className="mb-3">Actividades recomendadas</Label>
-          <ol className="divide-y divide-line rounded-md border border-line bg-surface">
-            {recs.map((a, i) => (<li key={a.id} className="flex items-center gap-4 px-5 py-4"><span className="font-mono text-sm text-faint">0{i + 1}</span><div className="flex-1"><div className="text-lg">{a.title}</div><div className="text-sm text-muted">{a.skill}</div></div><Difficulty n={a.difficulty} /></li>))}
-          </ol>
+          <Label className="mb-3">Siguiente paso</Label>
+          <p className="text-muted">Las actividades de refuerzo se cargarán desde el backend al comenzar.</p>
           <div className="mt-6 flex flex-wrap items-center gap-4"><Btn size="lg" variant="danger" onClick={() => c.nav("concept")} icon={<ArrowRight size={18} />}>Comenzar refuerzo</Btn><span className="text-muted">Después podrás realizar un nuevo intento.</span></div>
         </section>
       )}
@@ -307,8 +285,8 @@ export function ReviewList({ c }: { c: Ctx }) {
                 {due.length === 0 && <Card className="p-6 text-muted">Estás al día. El próximo repaso aparece abajo.</Card>}
                 {due.map(([id]) => (
                   <Card key={id} tone="brass" className="flex flex-wrap items-center justify-between gap-4 p-5">
-                    <div><div className="text-xl">{byId(id).name}</div><div className="text-sm text-muted">Dominio {pct(p.mastery[id])} · 1 pregunta</div></div>
-                    <Btn disabled={!REVIEWS[id] || c.reviewLoading} onClick={() => c.startReviewSessionFlow()} icon={<ArrowRight size={16} />}>{c.reviewLoading ? "Preparando…" : "Repasar"}</Btn>
+                  <div><div className="text-xl">{byId(id).name}</div><div className="text-sm text-muted">Dominio {pct(p.mastery[id])}</div></div>
+                    <Btn disabled={c.reviewLoading} onClick={() => c.startReviewSessionFlow()} icon={<ArrowRight size={16} />}>{c.reviewLoading ? "Preparando…" : "Repasar"}</Btn>
                   </Card>
                 ))}
               </div>
@@ -364,25 +342,25 @@ export function ReviewResultScreen({ c }: { c: Ctx }) {
   const r = c.reviewResult!;
   const k = byId(r.id);
   const out = r.fails >= 2;
-  const nextDue = dueToday(c.p).find(([id]) => id !== r.id && REVIEWS[id]);
+  const nextDue = dueToday(c.p).find(([id]) => id !== r.id);
   const tone = r.ok ? "sage" : out ? "clay" : "brass";
   return (
     <div className="mx-auto max-w-2xl py-6">
-      <Label className="mb-4">Repaso · {k.name}</Label>
+      <Label className="mb-4">Resumen de repasos · {conceptName(c.p, k.id)}</Label>
       <div className={cx("rise rounded-md border-l-4 bg-surface p-7", r.ok ? "border-sage" : out ? "border-clay" : "border-brass")}>
-        <div className={cx("mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-widest", r.ok ? "text-sage" : out ? "text-clay" : "text-brass")}>{r.ok ? <><Check size={14} />Respuesta correcta</> : <><RotateCcw size={14} />{out ? "Segundo fallo" : "Respuesta incorrecta"}</>}</div>
-        <h1 className="text-3xl font-medium leading-snug">{r.ok ? "¡Correcto! Mantienes un buen nivel de dominio." : "Este concepto necesita un poco más de práctica."}</h1>
+        <div className={cx("mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-widest", r.ok ? "text-sage" : out ? "text-clay" : "text-brass")}>{r.ok ? <><Check size={14} />Todas recordadas</> : <><RotateCcw size={14} />{out ? "Se requiere refuerzo" : "Algunas requieren práctica"}</>}</div>
+        <h1 className="text-3xl font-medium leading-snug">Repaso completado: {r.remembered} de {r.reviewed} tarjetas recordadas.</h1>
         <p className="mt-4 text-lg text-muted">{r.explain}</p>
       </div>
 
       <div className="mt-6 grid gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-2">
-        <div className="bg-surface p-5"><Label className="mb-2">Dominio</Label><div className="mb-2 text-3xl font-medium">{pct(r.mastery)}</div><Bar value={r.mastery} tone={tone === "brass" ? "brass" : tone} threshold={0.7} /></div>
-        <div className="bg-surface p-5"><Label className="mb-2">{out ? "Estado" : "Próximo repaso"}</Label><div className="text-2xl">{out ? "Vuelve a tu ruta" : dueLabel(r.nextDays)}</div></div>
+        <div className="bg-surface p-5"><Label className="mb-2">Dominio</Label><div className="mb-2 text-3xl font-medium">{r.mastery === null ? "—" : pct(r.mastery)}</div>{r.mastery !== null && <Bar value={r.mastery} tone={tone === "brass" ? "brass" : tone} threshold={0.7} />}</div>
+        <div className="bg-surface p-5"><Label className="mb-2">{out ? "Estado" : "Próximo repaso"}</Label><div className="text-2xl">{out ? "Vuelve a tu ruta" : r.nextDays === null ? "—" : dueLabel(r.nextDays)}</div></div>
       </div>
 
       {out && (
         <div className="rise mt-6 rounded-md border border-dashed border-clay/60 bg-clay/10 p-5">
-          <p className="text-lg">No pasa nada: ahora <b>{k.name}</b> vuelve a considerarse en tu ruta{r.nextCurrent && r.nextCurrent !== r.id ? <> y se reforzará cuando termines el concepto actual</> : <>, donde lo reforzarás de inmediato</>}.</p>
+          <p className="text-lg">No pasa nada: <b>{k.name}</b> requiere volver a estudiarse. Tu ruta se actualizará con ese resultado.</p>
         </div>
       )}
       {!r.ok && !out && <p className="mt-6 text-muted">Programamos un nuevo intento para mañana. Si quieres, puedes intentarlo ahora con otra pregunta.</p>}
@@ -401,13 +379,15 @@ export function ProgressScreen({ c }: { c: Ctx }) {
   const { p } = c;
   if (!p.diagnosed)
     return (<div><PageHeader kicker="Progreso" title="Todavía no hay progreso que mostrar" sub="Tu perfil de dominio se crea con el diagnóstico." /><Btn size="lg" onClick={() => c.nav("diag-intro")}>Comenzar diagnóstico</Btn></div>);
-  const m = masteredCount(p);
+  const total = routeConceptCount(p);
+  const routeIds = routeConcepts(p);
+  const m = routeMasteredCount(p);
   const reinf = p.reinforce.length;
   const inCur = p.current && !p.reinforce.includes(p.current) ? 1 : 0;
-  const pending = 12 - m - reinf - inCur;
+  const pending = Math.max(0, total - m - reinf - inCur);
   const seg: [string, number, string][] = [["Dominados", m, "bg-sage"], ["En curso", inCur, "bg-brass"], ["Refuerzo", reinf, "bg-clay"], ["Pendientes", pending, "bg-line"]];
   const due = dueList(p).slice(0, 4);
-  const complete = !p.current;
+  const complete = isRouteComplete(p);
   return (
     <div>
       <PageHeader kicker="Progreso · Cálculo Integral" title="Tu estado de dominio" />
@@ -415,22 +395,22 @@ export function ProgressScreen({ c }: { c: Ctx }) {
         <div className="space-y-5">
           <Card className="p-6">
             <div className="flex flex-wrap items-center gap-8">
-              <div className="flex items-center gap-4"><Ring value={m / 12} size={104}><span className="text-2xl font-medium">{pct(m / 12)}</span></Ring><div><Label>Progreso</Label><div className="text-lg">{m} de 12 conceptos</div></div></div>
+              <div className="flex items-center gap-4"><Ring value={total ? m / total : 0} size={104}><span className="text-2xl font-medium">{pct(total ? m / total : 0)}</span></Ring><div><Label>Progreso</Label><div className="text-lg">{m} de {total} conceptos</div></div></div>
               <div className="flex items-center gap-4"><Ring value={overallMastery(p)} size={104} tone="sage"><span className="text-2xl font-medium">{pct(overallMastery(p))}</span></Ring><div><Label>Dominio general</Label><div className="text-lg">{levelOf(Math.round(overallMastery(p) * 100))}</div></div></div>
             </div>
-            <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-raised">{seg.map(([k, n, cl]) => n > 0 && <div key={k} className={cl} style={{ width: `${(n / 12) * 100}%` }} />)}</div>
+            <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-raised">{seg.map(([k, n, cl]) => n > 0 && <div key={k} className={cl} style={{ width: `${total ? (n / total) * 100 : 0}%` }} />)}</div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-wider text-muted">{seg.map(([k, n, cl]) => <span key={k} className="inline-flex items-center gap-2"><span className={cx("h-2 w-2 rounded-full", cl)} />{k} {n}</span>)}</div>
           </Card>
           <Card className="p-6">
             <Label className="mb-4">Dominio por concepto</Label>
             <div className="space-y-3">
-              {CONCEPTS.map((k) => {
+              {routeIds.map((id) => byId(id)).map((k) => {
                 const s = status(p, k.id);
                 const cur = p.current === k.id;
                 return (
-                  <div key={k.id} className="flex items-center gap-3">
+              <div key={k.id} className="flex items-center gap-3">
                     <span className={cx("w-4", s === "mastered" ? "text-sage" : s === "reinforce" ? "text-clay" : cur ? "text-brass" : "text-faint")}><StatusIcon s={s} current={cur} size={14} /></span>
-                    <span className={cx("w-52 shrink-0 truncate text-[16px]", s === "pending" && !cur && "text-muted")}>{k.name}</span>
+                    <span className={cx("w-52 shrink-0 truncate text-[16px]", s === "pending" && !cur && "text-muted")}>{conceptName(p, k.id)}</span>
                     <Bar value={p.mastery[k.id]} tone={s === "mastered" ? "sage" : s === "reinforce" ? "clay" : "brass"} threshold={0.7} />
                     <span className="w-10 text-right font-mono text-xs text-muted">{pct(p.mastery[k.id])}</span>
                   </div>
@@ -442,6 +422,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
             <div className="p-6 pb-3"><Label>Historial de evaluaciones</Label></div>
             <table className="w-full text-left">
               <tbody className="divide-y divide-line">
+                {p.history.length === 0 && <tr><td colSpan={4} className="px-6 py-5 text-muted">Todavía no hay evaluaciones registradas en esta sesión.</td></tr>}
                 {p.history.map((h, i) => (
                   <tr key={i}>
                     <td className="py-3 pl-6 font-mono text-xs text-muted">{h.date}</td>
@@ -457,7 +438,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
         <div className="space-y-5">
           <Card className="p-6">
             <Label className="mb-3">Concepto actual</Label>
-            {p.current ? (<><div className="text-xl">{byId(p.current).name}</div><div className="mb-4 mt-2"><Bar value={p.mastery[p.current]} tone={reinf ? "clay" : "brass"} threshold={0.7} /></div><Btn className="w-full" onClick={() => c.nav(nextAction(p).screen)}>{nextAction(p).label}</Btn></>) : <p className="text-muted">Ruta completada.</p>}
+            {p.current ? (<><div className="text-xl">{byId(p.current).name}</div><div className="mb-4 mt-2"><Bar value={p.mastery[p.current]} tone={reinf ? "clay" : "brass"} threshold={0.7} /></div><Btn className="w-full" onClick={() => c.nav(nextAction(p).screen)}>{nextAction(p).label}</Btn></>) : <p className="text-muted">{complete ? "Ruta completada." : "No hay un paso actual cargado; abre tu ruta para actualizarla."}</p>}
           </Card>
           <Card className="p-6">
             <Label className="mb-3 text-clay">Necesitan refuerzo</Label>
@@ -469,7 +450,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
           </Card>
           <Card tone={complete ? "sage" : undefined} className="p-6">
             <div className="mb-2 flex items-center gap-2"><Award size={16} className={complete ? "text-sage" : "text-faint"} /><Label>Evaluación global</Label></div>
-            {complete ? (<><p className="mb-4 text-muted">Tu ruta está completa. Confirma tu dominio general.</p><Btn className="w-full" onClick={() => c.nav("final-ready")}>Ir a la evaluación global</Btn></>) : <p className="text-muted">Se habilita al completar tu ruta ({12 - m} conceptos restantes).</p>}
+            {complete ? (<><p className="mb-4 text-muted">Tu ruta está completa. Confirma tu dominio general.</p><Btn className="w-full" onClick={() => c.nav("final-ready")}>Ir a la evaluación global</Btn></>) : <p className="text-muted">Se habilita al completar tu ruta ({Math.max(0, total - m)} conceptos restantes).</p>}
           </Card>
         </div>
       </div>
@@ -479,14 +460,27 @@ export function ProgressScreen({ c }: { c: Ctx }) {
 
 export function FinalReady({ c }: { c: Ctx }) {
   const { p } = c;
+  if (!isRouteComplete(p)) {
+    return (
+      <div className="mx-auto max-w-2xl py-8 text-center">
+        <Label className="mb-3 text-brass">Tu ruta sigue en progreso</Label>
+        <h1 className="text-4xl font-medium leading-tight md:text-5xl">Aún tienes conceptos por estudiar y evaluar.</h1>
+        <p className="mt-4 text-lg text-muted">La evaluación global se habilitará cuando el backend marque todos los pasos de tu ruta como dominados.</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          {p.current && <Btn size="lg" onClick={() => c.nav("concept")} icon={<ArrowRight size={18} />}>Continuar con {conceptName(p, p.current)}</Btn>}
+          <Btn size="lg" variant="ghost" onClick={() => c.nav("path")}>Ver mi ruta</Btn>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
       <div className="rise mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-full border-2 border-sage text-sage"><Check size={36} strokeWidth={2} /></div>
       <Label className="mb-3 text-sage">Ruta completada</Label>
       <h1 className="text-4xl font-medium leading-tight md:text-5xl">Has completado tu ruta de aprendizaje.</h1>
-      <p className="mt-4 text-lg text-muted">Dominas los 12 conceptos de Cálculo Integral, con un dominio general de {pct(overallMastery(p))}. El último paso es confirmar que puedes integrarlos.</p>
+      <p className="mt-4 text-lg text-muted">Dominas los {routeConceptCount(p)} conceptos de tu ruta, con un dominio general de {pct(overallMastery(p))}. El último paso es confirmar que puedes integrarlos.</p>
       <Card className="mt-8 grid grid-cols-3 divide-x divide-line text-left">
-        {[["12 / 12", "conceptos dominados"], [pct(overallMastery(p)), "dominio general"], [`${dueList(p).length}`, "repasos programados"]].map(([a, b]) => (<div key={b} className="p-5"><div className="text-3xl font-medium">{a}</div><div className="font-mono text-[11px] uppercase tracking-wider text-muted">{b}</div></div>))}
+        {[[`${routeMasteredCount(p)} / ${routeConceptCount(p)}`, "conceptos dominados"], [pct(overallMastery(p)), "dominio general"], [`${dueList(p).length}`, "repasos programados"]].map(([a, b]) => (<div key={b} className="p-5"><div className="text-3xl font-medium">{a}</div><div className="font-mono text-[11px] uppercase tracking-wider text-muted">{b}</div></div>))}
       </Card>
       <div className="mt-8 flex flex-wrap justify-center gap-3"><Btn size="lg" onClick={() => c.nav("global-intro")} icon={<ArrowRight size={18} />}>Evaluación global</Btn><Btn size="lg" variant="ghost" onClick={() => c.nav("path")}>Ver mi ruta</Btn></div>
     </div>
@@ -500,7 +494,7 @@ export function GlobalIntro({ c }: { c: Ctx }) {
         <Label className="mb-6 text-brass">Evaluación global · Cálculo Integral</Label>
         <h1 className="text-4xl font-medium leading-tight">¿Dominas la asignatura completa?</h1>
         <p className="mt-4 text-xl text-muted">Preguntas que mezclan conceptos de toda tu ruta. Determina si tu dominio general es suficiente y qué conviene seguir repasando.</p>
-        <ul className="mt-6 space-y-2 text-lg"><li>· 6 preguntas de distintos conceptos</li><li>· Puntaje para aprobar: 70 / 100</li><li>· Sin pistas; el resultado llega al final</li></ul>
+        <ul className="mt-6 space-y-2 text-lg"><li>· Preguntas de distintos conceptos de tu ruta</li><li>· El puntaje se mostrar� al final</li><li>· Sin pistas; el resultado llega al final</li></ul>
         <div className="mt-8 flex gap-4"><Btn size="lg" onClick={() => c.startGlobalExamFlow()} disabled={c.globalExamLoading} icon={<ArrowRight size={18} />}>{c.globalExamLoading ? "Preparando…" : "Comenzar"}</Btn><Btn variant="quiet" onClick={() => c.nav("final-ready")}>Volver</Btn></div>
       </div>
     </div>
@@ -509,7 +503,7 @@ export function GlobalIntro({ c }: { c: Ctx }) {
 
 export function GlobalResultScreen({ c }: { c: Ctx }) {
   const r = c.globalResult!;
-  const pass = r.score >= 70;
+  const pass = r.passed ?? r.score >= 70;
   return (
     <div className="mx-auto max-w-3xl">
       <Label className="mb-6">Evaluación global · Cálculo Integral</Label>

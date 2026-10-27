@@ -40,9 +40,11 @@ export type {
   ReviewEstado,
   ReviewSessionDto,
   ReviewGradePayload,
+  ReviewGradeDto,
   ReviewFinishDto,
   GlobalExamEstado,
   GlobalExamDto,
+  GlobalConceptSummaryDto,
   GlobalExamResultDto,
 } from './types';
 
@@ -59,3 +61,4 @@ export * as globalExamApi from './services/globalExamApi';
 // Mapeadores de dominio
 export * from './mappers/conceptMapper';
 export * as conceptMapper from './mappers/conceptMapper';
+export * from './mappers/activityMapper';

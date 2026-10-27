@@ -10,11 +10,10 @@
  */
 
 import { apiGet, apiPost } from '../client';
+import { toActivityDto, toBackendAnswer, type BackendActivityDto } from '../mappers/activityMapper';
 import type {
   DiagnosticSessionDto,
-  ActivityDto,
   AnswerPayload,
-  AnswerResultDto,
   DiagnosticProfileDto,
 } from '../types';
 
@@ -25,26 +24,12 @@ import type {
 export function startDiagnostic(subjectId: string): Promise<DiagnosticSessionDto> {
 	return apiPost<{
 		session: { id: string; subjectId: string; state: string };
-		activities: {
-			id: string;
-			conceptId: string;
-			statement: string;
-			difficulty: number;
-			type: ActivityDto['tipo'];
-			options: { id: string; text: string }[];
-		}[];
+		activities: BackendActivityDto[];
 	}>(`/subjects/${subjectId}/diagnostics`).then(({ session, activities }) => ({
 		id: session.id,
 		subjectId: session.subjectId,
 		estado: session.state as DiagnosticSessionDto['estado'],
-		activities: activities.map((activity) => ({
-			id: activity.id,
-			conceptId: activity.conceptId,
-			enunciado: activity.statement,
-			dificultad: activity.difficulty,
-			tipo: activity.type,
-			options: activity.options,
-		})),
+		activities: activities.map(toActivityDto),
 	}));
 }
 
@@ -59,11 +44,11 @@ export function sendAnswer(
   sessionId: string,
   activityId: string,
   payload: AnswerPayload,
-): Promise<AnswerResultDto> {
-  return apiPost<AnswerResultDto>(
+): Promise<void> {
+	return apiPost<{ id: string; activityId: string; recorded: string }>(
     `/diagnostics/${sessionId}/answers/${activityId}`,
-    { optionId: payload.optionId, answer: payload.respuesta, seconds: payload.seconds },
-  );
+    toBackendAnswer(payload),
+  ).then(() => undefined);
 }
 
 /**

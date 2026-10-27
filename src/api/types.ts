@@ -22,17 +22,21 @@ export interface ApiError {
 
 export interface SubjectDto {
   id: string;
-  codigo: string;
-  nombre: string;
-  descripcion: string;
+  code: string;
+  name: string;
+  description: string;
+  active: boolean;
 }
 
 export interface ConceptDto {
   id: string;
-  codigo: string;
-  nombre: string;
-  nivel: number;
-  ordenSugerido: number;
+  subjectId: string;
+  code: string;
+  name: string;
+  description: string;
+  level: number;
+  order: number;
+  active: boolean;
 }
 
 export interface PrerequisiteDto {
@@ -128,15 +132,15 @@ export type LearningPathEstado = 'ACTIVA' | 'COMPLETADA' | 'ARCHIVADA';
 export interface PathStepDto {
   id: string;
   conceptId: string;
-  ordenSugerido: number;
-  estado: PathStepEstado;
+  order: number;
+  state: PathStepEstado;
 }
 
 export interface LearningPathDto {
   id: string;
   subjectId: string;
   version: number;
-  estado: LearningPathEstado;
+  state: LearningPathEstado;
   steps: PathStepDto[];
 }
 
@@ -164,10 +168,10 @@ export interface ShortEvalSessionDto {
 
 export interface ShortEvalResultDto {
   sessionId: string;
-  score: number;         // 0.0 – 1.0
+  score: number;         // Backend scale: 0–100
   passed: boolean;
-  threshold: number;     // p.ej. 0.7 (70%)
   newStepEstado: PathStepEstado;
+  recalculated: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +187,7 @@ export interface FlashcardDto {
 export interface ReviewQueueItemDto {
   progressId: string;
   conceptId: string;
+  consecutiveLapses: number;
   card: FlashcardDto;
 }
 
@@ -190,9 +195,19 @@ export type ReviewEstado = 'PENDIENTE' | 'EN_PROGRESO' | 'FINALIZADO';
 
 export interface ReviewSessionDto {
   id: string;
-  subjectId: string;
-  estado: ReviewEstado;
-  items: ReviewQueueItemDto[];
+  startedAt: string;
+  finishedAt: string | null;
+  reviewed: number;
+  remembered: number;
+  forgotten: number;
+}
+
+export interface ReviewGradeDto {
+  progressId: string;
+  intervalDays: number;
+  nextReviewAt: string;
+  easeFactor: number;
+  recalculationTriggered: boolean;
 }
 
 /** Payload SM-2: grado de 0 (no recordaba) a 5 (recordó fácilmente) */
@@ -204,10 +219,23 @@ export interface ReviewGradePayload {
 
 export interface ReviewFinishDto {
   sessionId: string;
+  finishedAt: string | null;
+  reviewed: number;
+  remembered: number;
+  forgotten: number;
   /** El backend indica si detectó amnesia conceptual (≥2 fallos consecutivos) */
-  amnesiaDetectada: boolean;
-  /** IDs de conceptos reabiertos a REFUERZO por amnesia */
-  conceptosReiniciados?: string[];
+  amnesiaDetectada?: boolean;
+}
+
+export interface ReviewGradeSummaryDto {
+  progressId: string;
+  grade: number;
+  intervalDays: number;
+  recalculationTriggered: boolean;
+}
+
+export interface ReviewSessionResultDto extends ReviewFinishDto {
+  grades: ReviewGradeSummaryDto[];
 }
 
 // ---------------------------------------------------------------------------
@@ -218,13 +246,21 @@ export type GlobalExamEstado = 'PENDIENTE' | 'EN_PROGRESO' | 'FINALIZADO';
 
 export interface GlobalExamDto {
   id: string;
-  subjectId: string;
+  attempt: number;
   estado: GlobalExamEstado;
   activities: ActivityDto[];
 }
 
+export interface GlobalConceptSummaryDto {
+  conceptId: string;
+  correct: number;
+  total: number;
+}
+
 export interface GlobalExamResultDto {
   examId: string;
-  overallScore: number; // 0.0 – 1.0
-  masteryByConcepto: ConceptMasteryDto[];
+  attempt: number;
+  score: number; // Backend scale: 0–100
+  passed: boolean;
+  concepts: GlobalConceptSummaryDto[];
 }

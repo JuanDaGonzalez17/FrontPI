@@ -10,7 +10,7 @@
  */
 
 import type { ConceptDto, PathStepDto, PathStepEstado } from '../types';
-import type { Id } from '../../data';
+import { CONCEPTS, type Id } from '../../data';
 import type { Status } from '../../state';
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,15 @@ export type SlugToUuid = Map<Id, string>;
 export interface ConceptMaps {
   uuidToSlug: UuidToSlug;
   slugToUuid: SlugToUuid;
+  conceptBySlug: Map<Id, ConceptDto>;
 }
+
+const BACKEND_CODE_TO_FRONTEND_ID: Record<string, Id> = {
+  'C0.1': 'prim',
+  'C1.1': 'reglas',
+  'C2.1': 'definida',
+  'C3.1': 'impropia',
+};
 
 // ---------------------------------------------------------------------------
 // Construcción del mapeador desde la respuesta del backend
@@ -43,14 +51,18 @@ export interface ConceptMaps {
 export function buildConceptMaps(concepts: ConceptDto[]): ConceptMaps {
   const uuidToSlug: UuidToSlug = new Map();
   const slugToUuid: SlugToUuid = new Map();
+  const conceptBySlug: Map<Id, ConceptDto> = new Map();
 
   for (const c of concepts) {
-    const slug = c.codigo as Id;
+    const slug = BACKEND_CODE_TO_FRONTEND_ID[c.code]
+      ?? CONCEPTS.find((concept) => concept.id === c.code)?.id;
+    if (!slug) continue;
     uuidToSlug.set(c.id, slug);
     slugToUuid.set(slug, c.id);
+    conceptBySlug.set(slug, c);
   }
 
-  return { uuidToSlug, slugToUuid };
+  return { uuidToSlug, slugToUuid, conceptBySlug };
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +94,7 @@ export function backendStepToStatus(estado: PathStepEstado): Status {
  * Determina si un PathStep es el "actual" (el que está en progreso).
  */
 export function isCurrentStep(step: PathStepDto): boolean {
-  return step.estado === 'EN_PROGRESO' || step.estado === 'DISPONIBLE';
+  return step.state === 'EN_PROGRESO' || step.state === 'DISPONIBLE';
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +119,9 @@ export function applyLearningPath(
 ): Profile {
   const np: Profile = {
     ...profile,
+    routeComplete: path.state === 'COMPLETADA',
+    routeConcepts: [],
+    routeDetails: {},
     mastery: { ...profile.mastery },
     reinforce: [],
     reviews: { ...profile.reviews },
@@ -117,8 +132,11 @@ export function applyLearningPath(
   for (const step of path.steps) {
     const slug = maps.uuidToSlug.get(step.conceptId);
     if (!slug) continue;
+    if (!np.routeConcepts.includes(slug)) np.routeConcepts.push(slug);
+    const concept = maps.conceptBySlug.get(slug);
+    if (concept) np.routeDetails[slug] = { name: concept.name, description: concept.description };
 
-    switch (step.estado) {
+    switch (step.state) {
       case 'DOMINADO':
         np.mastery[slug] = Math.max(np.mastery[slug] ?? 0, 0.75);
         break;

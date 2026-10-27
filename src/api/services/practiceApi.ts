@@ -8,6 +8,7 @@
  */
 
 import { apiGet, apiPost } from '../client';
+import { toActivityDto, toBackendAnswer, type BackendActivityDto } from '../mappers/activityMapper';
 import type { ActivityDto, PracticeAttemptPayload, PracticeResultDto } from '../types';
 
 /**
@@ -22,7 +23,7 @@ export function getPracticeActivities(
   difficulty?: number,
 ): Promise<ActivityDto[]> {
   const query = difficulty !== undefined ? `?difficulty=${difficulty}` : '';
-  return apiGet<ActivityDto[]>(`/concepts/${conceptId}/practice-activities${query}`);
+  return apiGet<BackendActivityDto[]>(`/concepts/${conceptId}/practice-activities${query}`).then((activities) => activities.map(toActivityDto));
 }
 
 /**
@@ -37,5 +38,15 @@ export function sendPracticeAttempt(
   activityId: string,
   payload: PracticeAttemptPayload,
 ): Promise<PracticeResultDto> {
-  return apiPost<PracticeResultDto>(`/activities/${activityId}/practice-attempts`, payload);
+	return apiPost<{
+		correct: boolean;
+		feedback: string;
+		specificFeedback: string;
+		correctOptionId: string | null;
+	}>(`/activities/${activityId}/practice-attempts`, toBackendAnswer(payload)).then((result) => ({
+		correct: result.correct,
+		feedback: result.specificFeedback || result.feedback,
+		explanation: result.feedback,
+		correctOptionId: result.correctOptionId ?? undefined,
+	}));
 }

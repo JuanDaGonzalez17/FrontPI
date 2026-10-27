@@ -70,7 +70,11 @@ export async function register(email: string, password: string, fullName: string
  * Obtiene el perfil del estudiante actualmente autenticado.
  */
 export function getMe(): Promise<StudentDto> {
-  return apiGet<StudentDto>('/auth/me');
+  return apiGet<{ studentId: string; fullName: string; email: string }>('/auth/me').then((profile) => ({
+    id: profile.studentId,
+    fullName: profile.fullName,
+    email: profile.email,
+  }));
 }
 
 /**

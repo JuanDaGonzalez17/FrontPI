@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { CONCEPTS, byId, unlocks, type Id } from "./data";
-import { status, type Profile } from "./state";
+import { CONCEPTS, byId, type Id } from "./data";
+import { conceptDescription, conceptName, routeConcepts, status, type Profile } from "./state";
 import { Bar, Btn, Label, Pill, StatusIcon, cx, pct, statusTone, type Tone } from "./ui";
 import { curriculumApi, buildConceptMaps } from "./api";
 
@@ -10,8 +10,6 @@ const pos = (id: Id) => {
   const c = byId(id);
   return { x: PAD + c.col * GX, y: PAD + c.row * GY };
 };
-const WIDTH = PAD * 2 + 2 * GX + W;
-const HEIGHT = PAD * 2 + 7 * GY + H;
 
 const NODE: Record<Tone, string> = {
   sage: "border-sage/60 bg-sage/[0.07]",
@@ -22,9 +20,13 @@ const NODE: Record<Tone, string> = {
 const NODE_TEXT: Record<Tone, string> = { sage: "text-sage", brass: "text-brass", clay: "text-clay", muted: "text-faint" };
 
 export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: Profile; selected?: Id | null; onSelect: (id: Id) => void; recognized?: Id[] }) {
+  const routeIds = routeConcepts(p);
+  const concepts = CONCEPTS.filter((concept) => routeIds.includes(concept.id));
+  const width = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.col)) * GX) + W;
+  const height = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.row)) * GY) + H;
   const [prereqMap, setPrereqMap] = useState<Record<Id, Id[]>>(() => {
     const m: Record<Id, Id[]> = {} as Record<Id, Id[]>;
-    CONCEPTS.forEach((c) => { m[c.id] = c.prereqs; });
+    CONCEPTS.forEach((c) => { m[c.id] = []; });
     return m;
   });
 
@@ -36,7 +38,7 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
         const concepts = await curriculumApi.getConcepts(subjectId);
         const maps = buildConceptMaps(concepts);
         const next: Record<Id, Id[]> = {} as Record<Id, Id[]>;
-        CONCEPTS.forEach((c) => { next[c.id] = c.prereqs; });
+        CONCEPTS.forEach((c) => { next[c.id] = []; });
         await Promise.all(
           concepts.map(async (concept) => {
             const slug = maps.uuidToSlug.get(concept.id);
@@ -50,7 +52,7 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
         );
         if (!cancelled) setPrereqMap(next);
       } catch {
-        // Fallback silencioso a los prerrequisitos estáticos del prototipo
+        // No inventar prerrequisitos si la consulta de relaciones falla.
       }
     })();
     return () => { cancelled = true; };
@@ -58,10 +60,11 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
 
   return (
     <div className="overflow-x-auto pb-2">
-      <div className="relative mx-auto" style={{ width: WIDTH, height: HEIGHT }}>
-        <svg className="absolute inset-0" width={WIDTH} height={HEIGHT} aria-hidden>
-          {CONCEPTS.flatMap((c) =>
-            (prereqMap[c.id] ?? c.prereqs).map((pr) => {
+      <div className="relative mx-auto" style={{ width, height }}>
+        <svg className="absolute inset-0" width={width} height={height} aria-hidden>
+          {concepts.flatMap((c) =>
+            (prereqMap[c.id] ?? []).map((pr) => {
+              if (!routeIds.includes(pr)) return null;
               const a = pos(pr), b = pos(c.id);
               const x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y;
               const done = status(p, pr) === "mastered";
@@ -76,7 +79,7 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
             }),
           )}
         </svg>
-        {CONCEPTS.map((c) => {
+        {concepts.map((c) => {
           const s = status(p, c.id);
           const isCur = p.current === c.id;
           const tone = statusTone(s, isCur);
@@ -96,7 +99,7 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
                 </span>
                 {(p.mastery[c.id] > 0 || s === "mastered") && <span>{pct(p.mastery[c.id])}</span>}
               </div>
-              <div className={cx("text-[15px] leading-tight", tone === "muted" ? "text-muted" : "text-fg")}>{c.name}</div>
+              <div className={cx("text-[15px] leading-tight", tone === "muted" ? "text-muted" : "text-fg")}>{conceptName(p, c.id)}</div>
             </button>
           );
         })}
@@ -107,17 +110,54 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
 
 export function ConceptDetail({ id, p, onGo }: { id: Id; p: Profile; onGo?: () => void }) {
   const c = byId(id);
+  const [relations, setRelations] = useState<{ prerequisites: Id[]; unlocks: Id[] }>({ prerequisites: [], unlocks: [] });
+  const [relationsLoaded, setRelationsLoaded] = useState(false);
   const s = status(p, id);
   const isCur = p.current === id;
   const tone = statusTone(s, isCur);
-  const next = unlocks(id);
+  const routeKey = routeConcepts(p).join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+    setRelationsLoaded(false);
+    (async () => {
+      try {
+        const subjectId = "10000000-0000-0000-0000-000000000001";
+        const concepts = await curriculumApi.getConcepts(subjectId);
+        const maps = buildConceptMaps(concepts);
+        const conceptId = maps.slugToUuid.get(id);
+        if (!conceptId) throw new Error("Concept not in backend curriculum");
+        const requiredIds = await curriculumApi.getPrerequisites(conceptId);
+        const route = new Set(routeKey.split("|"));
+        const prerequisites = requiredIds
+          .map((item) => maps.uuidToSlug.get(item.prerequisiteId))
+          .filter((slug): slug is Id => !!slug && route.has(slug));
+        const outgoing = await Promise.all(
+          concepts.filter((item) => route.has(maps.uuidToSlug.get(item.id) ?? ""))
+            .map(async (item) => ({ id: item.id, prerequisites: await curriculumApi.getPrerequisites(item.id) })),
+        );
+        const unlockIds = outgoing
+          .filter((item) => item.prerequisites.some((prerequisite) => prerequisite.prerequisiteId === conceptId))
+          .map((item) => maps.uuidToSlug.get(item.id))
+          .filter((slug): slug is Id => !!slug);
+        if (!cancelled) setRelations({ prerequisites, unlocks: unlockIds });
+      } catch {
+        if (!cancelled) setRelations({ prerequisites: [], unlocks: [] });
+      } finally {
+        if (!cancelled) setRelationsLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id, routeKey]);
+
+  const next = relations.unlocks.map(byId);
   return (
     <div className="rise space-y-4" key={id}>
       <div>
         <Pill tone={tone} icon={<StatusIcon s={s} current={isCur} size={12} />}>
           {isCur ? "Concepto actual" : s === "mastered" ? "Dominado" : s === "reinforce" ? "Necesita refuerzo" : "Pendiente"}
         </Pill>
-        <h3 className="mt-3 text-2xl font-medium leading-tight">{c.name}</h3>
+        <h3 className="mt-3 text-2xl font-medium leading-tight">{conceptName(p, id)}</h3>
       </div>
       <div>
         <div className="mb-1.5 flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted">
@@ -126,14 +166,16 @@ export function ConceptDetail({ id, p, onGo }: { id: Id; p: Profile; onGo?: () =
         </div>
         <Bar value={p.mastery[id]} tone={tone} threshold={0.7} />
       </div>
-      <p className="text-[15px] italic text-muted">“{c.objective}”</p>
+      <p className="text-[15px] italic text-muted">“{conceptDescription(p, id)}”</p>
       <div>
         <Label className="mb-1.5">Requiere</Label>
-        {c.prereqs.length === 0 ? (
-          <p className="text-[15px] text-muted">Punto de partida de la asignatura.</p>
+        {!relationsLoaded ? (
+          <p className="text-[15px] text-muted">Cargando relaciones del plan de estudios…</p>
+        ) : relations.prerequisites.length === 0 ? (
+          <p className="text-[15px] text-muted">Sin prerrequisitos registrados.</p>
         ) : (
           <ul className="space-y-1 text-[15px]">
-            {c.prereqs.map((r) => (
+            {relations.prerequisites.map((r) => (
               <li key={r} className="flex items-center gap-2">
                 <span className={status(p, r) === "mastered" ? "text-sage" : "text-faint"}><StatusIcon s={status(p, r)} size={13} /></span>
                 {byId(r).name}
@@ -144,12 +186,14 @@ export function ConceptDetail({ id, p, onGo }: { id: Id; p: Profile; onGo?: () =
       </div>
       <div>
         <Label className="mb-1.5">Desbloquea</Label>
-        {next.length === 0 ? (
+        {!relationsLoaded ? (
+          <p className="text-[15px] text-muted">Cargando conceptos siguientes…</p>
+        ) : next.length === 0 ? (
           <p className="text-[15px] text-muted">Cierre de esta rama de la ruta.</p>
         ) : (
           <ul className="space-y-1 text-[15px]">
-            {next.map((r) => (
-              <li key={r.id} className="flex items-center gap-2 text-muted"><ArrowRight size={13} />{r.name}</li>
+          {next.map((r) => (
+            <li key={r.id} className="flex items-center gap-2 text-muted"><ArrowRight size={13} />{conceptName(p, r.id)}</li>
             ))}
           </ul>
         )}

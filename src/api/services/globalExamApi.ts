@@ -9,7 +9,8 @@
  */
 
 import { apiPost } from '../client';
-import type { GlobalExamDto, AnswerPayload, AnswerResultDto, GlobalExamResultDto } from '../types';
+import { toActivityDto, type BackendActivityDto } from '../mappers/activityMapper';
+import type { GlobalExamDto, AnswerPayload, GlobalExamResultDto } from '../types';
 
 /**
  * Inicia el examen global para la asignatura.
@@ -19,7 +20,17 @@ import type { GlobalExamDto, AnswerPayload, AnswerResultDto, GlobalExamResultDto
  * @param subjectId - UUID de la asignatura
  */
 export function startGlobalExam(subjectId: string): Promise<GlobalExamDto> {
-  return apiPost<GlobalExamDto>(`/subjects/${subjectId}/global-exams`);
+	return apiPost<{
+		id: string;
+		attempt: number;
+		state: string;
+		activities: BackendActivityDto[];
+	}>(`/subjects/${subjectId}/global-exams`).then((exam) => ({
+		id: exam.id,
+		attempt: exam.attempt,
+		estado: exam.state as GlobalExamDto['estado'],
+		activities: exam.activities.map(toActivityDto),
+	}));
 }
 
 /**
@@ -33,11 +44,11 @@ export function sendExamAnswer(
   examId: string,
   activityId: string,
   payload: AnswerPayload,
-): Promise<AnswerResultDto> {
-  return apiPost<AnswerResultDto>(
+): Promise<void> {
+	return apiPost<{ id: string; activityId: string; message: string }>(
     `/global-exams/${examId}/answers/${activityId}`,
-    payload,
-  );
+    { optionId: payload.optionId, text: payload.respuesta, seconds: payload.seconds },
+  ).then(() => undefined);
 }
 
 /**
@@ -47,5 +58,17 @@ export function sendExamAnswer(
  * @param examId - UUID del examen global
  */
 export function finishGlobalExam(examId: string): Promise<GlobalExamResultDto> {
-  return apiPost<GlobalExamResultDto>(`/global-exams/${examId}/finish`);
+	return apiPost<{
+		id: string;
+		attempt: number;
+		score: number;
+		passed: boolean;
+		concepts: GlobalExamResultDto['concepts'];
+	}>(`/global-exams/${examId}/finish`).then((result) => ({
+		examId: result.id,
+		attempt: result.attempt,
+		score: result.score,
+		passed: result.passed,
+		concepts: result.concepts,
+	}));
 }

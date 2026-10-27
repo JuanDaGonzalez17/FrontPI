@@ -9,7 +9,8 @@
  */
 
 import { apiPost } from '../client';
-import type { ShortEvalSessionDto, AnswerPayload, AnswerResultDto, ShortEvalResultDto } from '../types';
+import { toActivityDto, toBackendAnswer, type BackendActivityDto } from '../mappers/activityMapper';
+import type { ShortEvalSessionDto, AnswerPayload, ShortEvalResultDto } from '../types';
 
 /**
  * Inicia una evaluación corta sumativa para un paso de la ruta.
@@ -19,7 +20,16 @@ import type { ShortEvalSessionDto, AnswerPayload, AnswerResultDto, ShortEvalResu
  * @param stepId    - UUID del paso de la ruta (PathStep) que se está evaluando
  */
 export function startShortEval(subjectId: string, stepId: string): Promise<ShortEvalSessionDto> {
-  return apiPost<ShortEvalSessionDto>(`/subjects/${subjectId}/path-steps/${stepId}/short-evaluations`);
+  return apiPost<{
+    session: { id: string; conceptId: string; pathStepId: string; attempt: number; state: string };
+    activities: BackendActivityDto[];
+  }>(`/subjects/${subjectId}/path-steps/${stepId}/short-evaluations`).then(({ session, activities }) => ({
+    id: session.id,
+    subjectId,
+    stepId: session.pathStepId,
+    estado: session.state as ShortEvalSessionDto['estado'],
+    activities: activities.map(toActivityDto),
+  }));
 }
 
 /**
@@ -35,11 +45,11 @@ export function sendEvalAnswer(
   sessionId: string,
   activityId: string,
   payload: AnswerPayload,
-): Promise<AnswerResultDto> {
-  return apiPost<AnswerResultDto>(
+): Promise<void> {
+	return apiPost<{ id: string; activityId: string; recorded: string }>(
     `/short-evaluations/${sessionId}/answers/${activityId}`,
-    payload,
-  );
+    toBackendAnswer(payload),
+  ).then(() => undefined);
 }
 
 /**
@@ -49,5 +59,17 @@ export function sendEvalAnswer(
  * @param sessionId - UUID de la sesión de evaluación
  */
 export function finishShortEval(sessionId: string): Promise<ShortEvalResultDto> {
-  return apiPost<ShortEvalResultDto>(`/short-evaluations/${sessionId}/finish`);
+  return apiPost<{
+    sessionId: string;
+    score: number;
+    approved: boolean;
+    stepState: ShortEvalResultDto['newStepEstado'];
+    recalculated: boolean;
+  }>(`/short-evaluations/${sessionId}/finish`).then((result) => ({
+    sessionId: result.sessionId,
+    score: result.score,
+    passed: result.approved,
+    newStepEstado: result.stepState,
+    recalculated: result.recalculated,
+  }));
 }

@@ -6,7 +6,7 @@
  *   1. getDueReviews(subjectId)                → lista tarjetas vencidas hoy
  *   2. startReviewSession(subjectId)            → crea sesión de repaso
  *   3. submitGrade(sessionId, payload)          → envía calificación SM-2 (0-5) por tarjeta
- *   4. finishReviewSession(sessionId)           → cierra sesión y detecta amnesia conceptual
+ *   4. finishReviewSession(sessionId)           → cierra la sesión; la amnesia se reporta al calificar
  */
 
 import { apiGet, apiPost } from '../client';
@@ -14,6 +14,7 @@ import type {
   ReviewQueueItemDto,
   ReviewSessionDto,
   ReviewGradePayload,
+  ReviewGradeDto,
   ReviewFinishDto,
 } from '../types';
 
@@ -24,7 +25,15 @@ import type {
  * @param subjectId - UUID de la asignatura
  */
 export function getDueReviews(subjectId: string): Promise<ReviewQueueItemDto[]> {
-  return apiGet<ReviewQueueItemDto[]>(`/subjects/${subjectId}/reviews/due`);
+	return apiGet<{
+		progress: { id: string; consecutiveLapses: number };
+		card: { id: string; conceptId: string; front: string; back: string; hint: string };
+	}[]>(`/subjects/${subjectId}/reviews/due`).then((due) => due.map(({ progress, card }) => ({
+		progressId: progress.id,
+		conceptId: card.conceptId,
+		consecutiveLapses: progress.consecutiveLapses,
+		card: { id: card.id, front: card.front, back: card.back },
+	})));
 }
 
 /**
@@ -33,7 +42,14 @@ export function getDueReviews(subjectId: string): Promise<ReviewQueueItemDto[]> 
  * @param subjectId - UUID de la asignatura
  */
 export function startReviewSession(subjectId: string): Promise<ReviewSessionDto> {
-  return apiPost<ReviewSessionDto>(`/subjects/${subjectId}/review-sessions`);
+	return apiPost<{
+		id: string;
+		startedAt: string;
+		finishedAt: string | null;
+		reviewed: number;
+		remembered: number;
+		forgotten: number;
+	}>(`/subjects/${subjectId}/review-sessions`);
 }
 
 /**
@@ -48,18 +64,30 @@ export function startReviewSession(subjectId: string): Promise<ReviewSessionDto>
 export function submitGrade(
   sessionId: string,
   payload: ReviewGradePayload,
-): Promise<void> {
-  return apiPost<void>(`/review-sessions/${sessionId}/grades`, payload);
+): Promise<ReviewGradeDto> {
+	return apiPost<ReviewGradeDto>(`/review-sessions/${sessionId}/grades`, payload);
 }
 
 /**
  * Finaliza la sesión de repaso.
- * El resultado indica si el backend detectó amnesia conceptual (≥2 fallos consecutivos),
- * en cuyo caso reabriría conceptos a estado REFUERZO y el frontend debe actualizar
- * el grafo y notificar al usuario con un modal de alerta.
+ * La respuesta contiene los contadores de la sesión. La detección de amnesia
+ * llega en las respuestas individuales de submitGrade.
  *
  * @param sessionId - UUID de la sesión de repaso
  */
 export function finishReviewSession(sessionId: string): Promise<ReviewFinishDto> {
-  return apiPost<ReviewFinishDto>(`/review-sessions/${sessionId}/finish`);
+	return apiPost<{
+		id: string;
+		startedAt: string;
+		finishedAt: string | null;
+		reviewed: number;
+		remembered: number;
+		forgotten: number;
+	}>(`/review-sessions/${sessionId}/finish`).then((result) => ({
+		sessionId: result.id,
+		finishedAt: result.finishedAt,
+		reviewed: result.reviewed,
+		remembered: result.remembered,
+		forgotten: result.forgotten,
+	}));
 }

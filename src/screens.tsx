@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, CalendarClock, Check, Compass, Lock, MapPin, Sparkles } from "lucide-react";
-import { CONCEPTS, byId, unlocks, type Id } from "./data";
+import { byId, unlocks, type Id } from "./data";
 import { ConceptDetail, KnowledgeGraph, Legend } from "./Graph";
 import {
-  dueLabel, dueList, dueToday, masteredCount, nextAction, overallMastery, status,
+  conceptName, dueLabel, dueList, dueToday, isRouteComplete, routeConceptCount, routeMasteredCount, routeConcepts, nextAction, overallMastery, status,
   type EvalResult, type GlobalResult, type Profile, type ReviewResult, type Screen,
 } from "./state";
 import { Bar, Btn, Card, Label, PageHeader, Pill, Ring, StatusIcon, cx, pct, statusTone } from "./ui";
@@ -38,7 +38,7 @@ export interface Ctx {
 
 const SUBJECT = {
   name: "Cálculo Integral",
-  desc: "Desde la antiderivada hasta aplicaciones en geometría y física: una ruta de 12 conceptos con prerrequisitos explícitos.",
+  desc: "Desde la antiderivada hasta las aplicaciones de la integración.",
 };
 
 function NextStepCard({ c }: { c: Ctx }) {
@@ -59,9 +59,9 @@ function NextStepCard({ c }: { c: Ctx }) {
         </>
       ) : cur ? (
         <>
-          <h2 className="mt-4 text-3xl font-medium md:text-4xl">{cur.name}</h2>
+          <h2 className="mt-4 text-3xl font-medium md:text-4xl">{conceptName(p, cur.id)}</h2>
           <p className="mt-3 max-w-xl text-lg text-muted">
-            {p.reinforce.includes(cur.id) ? "Todavía hay habilidades por afianzar antes de continuar. Te propusimos práctica específica." : `Es el siguiente eslabón de tu ruta y abre: ${unlocks(cur.id).map((u) => u.name).join(", ") || "el cierre de la asignatura"}.`}
+            {p.reinforce.includes(cur.id) ? "Todavía hay habilidades por afianzar antes de continuar. Te propusimos práctica específica." : `Es el siguiente eslabón de tu ruta y abre: ${unlocks(cur.id).filter((u) => routeConcepts(p).includes(u.id)).map((u) => conceptName(p, u.id)).join(", ") || "el cierre de la asignatura"}.`}
           </p>
           <div className="mt-5 max-w-md">
             <div className="mb-1.5 flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted"><span>Dominio actual</span><span>{pct(p.mastery[cur.id])} / meta 70%</span></div>
@@ -71,7 +71,7 @@ function NextStepCard({ c }: { c: Ctx }) {
       ) : (
         <>
           <h2 className="mt-4 text-3xl font-medium md:text-4xl">Has completado tu ruta de aprendizaje</h2>
-          <p className="mt-3 max-w-xl text-lg text-muted">Dominas los 12 conceptos. Falta confirmar tu dominio general con la evaluación global.</p>
+          <p className="mt-3 max-w-xl text-lg text-muted">Has dominado los {routeConceptCount(p)} conceptos de tu ruta. Falta confirmar tu dominio general con la evaluación global.</p>
         </>
       )}
       <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -84,12 +84,13 @@ function NextStepCard({ c }: { c: Ctx }) {
 
 function RouteGlance({ c }: { c: Ctx }) {
   const { p } = c;
-  const known = CONCEPTS.filter((x) => status(p, x.id) === "mastered");
-  const later = CONCEPTS.filter((x) => status(p, x.id) !== "mastered" && x.id !== p.current);
+  const ids = routeConcepts(p);
+  const known = ids.map(byId).filter((x) => status(p, x.id) === "mastered");
+  const later = ids.map(byId).filter((x) => status(p, x.id) !== "mastered" && x.id !== p.current);
   const cols = [
-    { t: "Lo que sabes", tone: "sage" as const, items: known.slice(-3).map((x) => x.name), more: Math.max(0, known.length - 3), icon: <Check size={14} /> },
-    { t: "Lo que estudias", tone: "brass" as const, items: p.current ? [byId(p.current).name] : [], more: 0, icon: <MapPin size={14} /> },
-    { t: "Lo que sigue", tone: "muted" as const, items: later.slice(0, 3).map((x) => x.name), more: Math.max(0, later.length - 3), icon: <ArrowRight size={14} /> },
+    { t: "Lo que sabes", tone: "sage" as const, items: known.slice(-3).map((x) => conceptName(p, x.id)), more: Math.max(0, known.length - 3), icon: <Check size={14} /> },
+    { t: "Lo que estudias", tone: "brass" as const, items: p.current ? [conceptName(p, p.current)] : [], more: 0, icon: <MapPin size={14} /> },
+    { t: "Lo que sigue", tone: "muted" as const, items: later.slice(0, 3).map((x) => conceptName(p, x.id)), more: Math.max(0, later.length - 3), icon: <ArrowRight size={14} /> },
   ];
   return (
     <Card className="rise p-6">
@@ -157,24 +158,19 @@ export function Home({ c }: { c: Ctx }) {
 }
 
 function SubjectRow({ c }: { c: Ctx }) {
-  const prog = c.p.diagnosed ? masteredCount(c.p) / CONCEPTS.length : 0;
+  const total = routeConceptCount(c.p);
+  const mastered = routeMasteredCount(c.p);
+  const prog = c.p.diagnosed && total ? mastered / total : 0;
   return (
     <div className="divide-y divide-line">
       <button onClick={() => c.nav("subject")} className="group flex w-full items-center gap-5 py-3 text-left first:pt-0">
         <Ring value={prog} size={52} tone="brass"><span className="font-mono text-[11px]">{pct(prog)}</span></Ring>
         <div className="flex-1">
           <div className="text-xl">{SUBJECT.name}</div>
-          <div className="text-[15px] text-muted">{c.p.diagnosed ? `${masteredCount(c.p)} de 12 conceptos dominados` : "Diagnóstico pendiente"}</div>
+          <div className="text-[15px] text-muted">{c.p.diagnosed ? `${mastered} de ${total} conceptos dominados` : "Diagnóstico pendiente"}</div>
         </div>
-        <Pill tone="brass">Piloto</Pill>
         <ArrowRight size={18} className="text-faint transition group-hover:translate-x-1 group-hover:text-fg" />
       </button>
-      {["Álgebra Lineal", "Física Mecánica"].map((n) => (
-        <div key={n} className="flex items-center gap-5 py-3 opacity-50 last:pb-0">
-          <Ring value={0} size={52} tone="muted"><Lock size={14} /></Ring>
-          <div className="flex-1"><div className="text-xl">{n}</div><div className="text-[15px] text-muted">Fuera del piloto</div></div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -221,8 +217,8 @@ export function Subjects({ c }: { c: Ctx }) {
             <Card key={s.id} className="p-6">
               <button onClick={() => c.nav("subject")} className="group flex w-full items-center gap-5 text-left">
                 <div className="flex-1">
-                  <div className="text-xl">{s.nombre}</div>
-                  <div className="text-[15px] text-muted">{s.descripcion}</div>
+                  <div className="text-xl">{s.name}</div>
+                  <div className="text-[15px] text-muted">{s.description}</div>
                 </div>
                 <Pill tone="brass">Disponible</Pill>
                 <ArrowRight size={18} className="text-faint transition group-hover:translate-x-1 group-hover:text-fg" />
@@ -244,9 +240,9 @@ export function Subject({ c }: { c: Ctx }) {
   const { p } = c;
   const a = nextAction(p);
   const stats: [string, string][] = [
-    ["Progreso", p.diagnosed ? pct(masteredCount(p) / 12) : "—"],
+    ["Progreso", p.diagnosed && routeConceptCount(p) ? pct(routeMasteredCount(p) / routeConceptCount(p)) : "—"],
     ["Dominio general", p.diagnosed ? pct(overallMastery(p)) : "—"],
-    ["Conceptos dominados", p.diagnosed ? `${masteredCount(p)} / 12` : "—"],
+    ["Conceptos dominados", p.diagnosed ? `${routeMasteredCount(p)} / ${routeConceptCount(p)}` : "—"],
     ["Concepto actual", p.current ? byId(p.current).name : p.diagnosed ? "Ruta completa" : "Sin definir"],
     ["Próximo repaso", p.diagnosed && dueList(p)[0] ? `${byId(dueList(p)[0][0]).name} · ${dueLabel(dueList(p)[0][1].dueIn)}` : "—"],
   ];
@@ -277,7 +273,7 @@ export function Subject({ c }: { c: Ctx }) {
 
 export function DiagIntro({ c }: { c: Ctx }) {
   const steps = [
-    ["6 preguntas", "Una a la vez, sobre los conceptos y prerrequisitos clave."],
+    ["Adaptativo", "Una pregunta a la vez, según los conceptos disponibles."],
     ["Sin nota", "No es un examen. “No lo sé” es una respuesta válida."],
     ["Tu ruta", "Con el resultado armamos un mapa que empieza donde tú estás."],
   ];
@@ -298,7 +294,7 @@ export function DiagIntro({ c }: { c: Ctx }) {
 
 export function DiagSummary({ c }: { c: Ctx }) {
   const { p } = c;
-  const tested = ["prim", "reglas", "metodos", "definida", "tfc"] as Id[];
+  const tested = routeConcepts(p);
   const strong = tested.filter((i) => status(p, i) === "mastered");
   return (
     <div className="mx-auto max-w-3xl">
@@ -317,7 +313,7 @@ export function DiagSummary({ c }: { c: Ctx }) {
           );
         })}
       </Card>
-      <p className="mt-5 text-muted">Los {12 - tested.length} conceptos restantes dependen de estos, así que por ahora los consideramos pendientes. {strong.length > 0 && `Reconocimos ${strong.length} como dominados y no tendrás que repetirlos.`}</p>
+      <p className="mt-5 text-muted">El diagnóstico cubrió {tested.length} conceptos de la ruta. {strong.length > 0 && `Reconocimos ${strong.length} como dominados y no tendrás que repetirlos.`}</p>
       <Btn size="lg" className="mt-8" onClick={() => c.nav("path-new")} icon={<Sparkles size={18} />}>Ver mi ruta personalizada</Btn>
     </div>
   );
@@ -350,14 +346,14 @@ export function PathNew({ c }: { c: Ctx }) {
       <PageHeader
         kicker="Ruta generada a partir de tu diagnóstico"
         title="Esta es tu ruta de aprendizaje"
-        sub={p.current ? <>Reconocimos <b className="text-sage">{known} conceptos como dominados</b>. Empezarás en <b className="text-brass">{byId(p.current).name}</b>, y de ahí seguirás las ramas que se abren.</> : "Ya dominas todo lo evaluado."}
+        sub={p.current ? <>Reconocimos <b className="text-sage">{known} conceptos como dominados</b>. Empezarás en <b className="text-brass">{conceptName(p, p.current)}</b>, y de ahí seguirás las ramas que se abren.</> : "Ya dominas todo lo evaluado."}
         right={<Btn size="lg" onClick={() => c.nav("concept")} icon={<ArrowRight size={18} />}>Comenzar mi ruta</Btn>}
       />
       <div className="mb-6 grid gap-px overflow-hidden rounded-md border border-line bg-line md:grid-cols-3">
         {[
           ["Ya dominas", `${known}`, "text-sage", "Los omitimos: se repasarán más adelante."],
-          ["Empiezas aquí", p.current ? byId(p.current).name : "—", "text-brass", "Es tu punto de partida personal."],
-          ["Por delante", `${CONCEPTS.length - known - 1}`, "text-muted", "Conceptos que se desbloquean en orden."],
+          ["Empiezas aquí", p.current ? conceptName(p, p.current) : "—", "text-brass", "Es tu punto de partida personal."],
+          ["Por delante", `${Math.max(0, routeConceptCount(p) - known - (p.current ? 1 : 0))}`, "text-muted", "Conceptos que se desbloquean en orden."],
         ].map(([k, v, cl, d]) => (
           <div key={k} className="bg-surface p-5"><Label className="mb-1">{k}</Label><div className={cx("text-2xl font-medium", cl)}>{v}</div><p className="text-[15px] text-muted">{d}</p></div>
         ))}
@@ -371,7 +367,7 @@ export function PathScreen({ c }: { c: Ctx }) {
   const { p } = c;
   useEffect(() => {
     c.ensurePath();
-  }, [c]);
+  }, [c.ensurePath]);
   if (c.pathLoading) {
     return (
       <div>
@@ -389,7 +385,7 @@ export function PathScreen({ c }: { c: Ctx }) {
   const reinforceOthers = p.reinforce.filter((r) => r !== p.current);
   return (
     <div>
-      <PageHeader kicker="Mi ruta" title={p.current ? "Tu ruta, actualizada" : "Ruta completada"} sub={p.current ? <>Estás en <b className="text-brass">{byId(p.current).name}</b>. {masteredCount(p)} de 12 conceptos dominados.</> : "Has dominado todos los conceptos de tu ruta."} />
+      <PageHeader kicker="Mi ruta" title={isRouteComplete(p) ? "Ruta completada" : "Tu ruta, actualizada"} sub={p.current ? <>Estás en <b className="text-brass">{conceptName(p, p.current)}</b>. {routeMasteredCount(p)} de {routeConceptCount(p)} conceptos dominados.</> : isRouteComplete(p) ? "Has dominado todos los conceptos de tu ruta." : `${routeMasteredCount(p)} de ${routeConceptCount(p)} conceptos dominados. Aún hay conceptos pendientes.`} />
       {c.flash && (
         <div className="rise mb-6 flex items-start justify-between gap-4 rounded-md border border-sage/40 bg-sage/10 p-4">
           <div className="flex gap-3"><Check className="mt-1 text-sage" size={18} /><div><div className="text-lg">Ruta actualizada</div><p className="text-muted">{c.flash}</p></div></div>

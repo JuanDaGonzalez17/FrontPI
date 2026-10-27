@@ -1,4 +1,4 @@
-import { CONCEPTS, REVIEWS, THRESH, type Id } from "./data";
+import { CONCEPTS, REVIEWS, THRESH, byId, type Id } from "./data";
 
 export type Screen =
   | "home" | "subjects" | "subject"
@@ -6,8 +6,7 @@ export type Screen =
   | "path" | "concept" | "activity" | "activities-done"
   | "eval-intro" | "eval" | "eval-result"
   | "review-list" | "review" | "review-result"
-  | "progress" | "final-ready" | "global-intro" | "global" | "global-result"
-  | "spec";
+  | "progress" | "final-ready" | "global-intro" | "global" | "global-result";
 
 export type Status = "mastered" | "reinforce" | "pending";
 
@@ -21,6 +20,9 @@ export interface HistoryItem {
 
 export interface Profile {
   diagnosed: boolean;
+  routeComplete: boolean;
+  routeConcepts: Id[];
+  routeDetails: Partial<Record<Id, { name: string; description: string }>>;
   mastery: Record<Id, number>;
   current: Id | null;
   reinforce: Id[];
@@ -44,16 +46,19 @@ export interface EvalResult {
 
 export interface ReviewResult {
   id: Id;
+  reviewed: number;
+  remembered: number;
   ok: boolean;
   fails: number;
-  nextDays: number;
-  mastery: number;
+  nextDays: number | null;
+  mastery: number | null;
   nextCurrent: Id | null;
   explain: string;
 }
 
 export interface GlobalResult {
   score: number;
+  passed?: boolean;
   strong: Id[];
   weak: Id[];
 }
@@ -67,7 +72,16 @@ export const firstOpen = (p: Profile): Id | null =>
   CONCEPTS.find((c) => status(p, c.id) !== "mastered")?.id ?? null;
 
 export const masteredCount = (p: Profile) => CONCEPTS.filter((c) => status(p, c.id) === "mastered").length;
-export const overallMastery = (p: Profile) => CONCEPTS.reduce((a, c) => a + p.mastery[c.id], 0) / CONCEPTS.length;
+export const routeConcepts = (p: Profile): Id[] => p.routeConcepts;
+export const routeConceptCount = (p: Profile) => routeConcepts(p).length;
+export const routeMasteredCount = (p: Profile) => routeConcepts(p).filter((id) => status(p, id) === "mastered").length;
+export const conceptName = (p: Profile, id: Id) => p.routeDetails[id]?.name ?? byId(id).name;
+export const conceptDescription = (p: Profile, id: Id) => p.routeDetails[id]?.description ?? byId(id).objective;
+export const isRouteComplete = (p: Profile) => p.diagnosed && p.routeComplete;
+export const overallMastery = (p: Profile) => {
+  const ids = routeConcepts(p);
+  return ids.length ? ids.reduce((a, id) => a + p.mastery[id], 0) / ids.length : 0;
+};
 export const dueList = (p: Profile) =>
   (Object.entries(p.reviews) as [Id, { dueIn: number; fails: number }][])
     .filter(([, r]) => r)
@@ -85,7 +99,9 @@ export interface NextAction {
 
 export function nextAction(p: Profile): NextAction {
   if (!p.diagnosed) return { state: "Diagnóstico pendiente", tone: "brass", label: "Comenzar diagnóstico", screen: "diag-intro" };
-  if (!p.current) return { state: "Ruta completada", tone: "sage", label: "Hacer la evaluación global", screen: "final-ready" };
+  if (!p.current) return isRouteComplete(p)
+    ? { state: "Ruta completada", tone: "sage", label: "Hacer la evaluación global", screen: "final-ready" }
+    : { state: "Ruta pendiente de actualización", tone: "brass", label: "Ver mi ruta", screen: "path" };
   if (p.reinforce.includes(p.current))
     return p.reinforceDone
       ? { state: "Refuerzo completado", tone: "clay", label: "Realizar nuevo intento", screen: "eval-intro" }
@@ -95,13 +111,15 @@ export function nextAction(p: Profile): NextAction {
 }
 
 export const fresh = (): Profile => ({
-  diagnosed: false, mastery: zero(), current: null, reinforce: [], weakSkills: [],
+  diagnosed: false, routeComplete: false, routeConcepts: [], routeDetails: {}, mastery: zero(), current: null, reinforce: [], weakSkills: [],
   evalAttempts: 0, practiceDone: false, reinforceDone: false, history: [], reviews: {},
 });
 
 export const diagnosed = (): Profile => ({
   ...fresh(),
   diagnosed: true,
+  routeConcepts: CONCEPTS.map((c) => c.id),
+  routeDetails: {},
   mastery: { ...zero(), prim: 0.92, reglas: 0.85, metodos: 0.45, definida: 0.3, tfc: 0.1 },
   current: "metodos",
   reviews: { reglas: { dueIn: 0, fails: 0 }, prim: { dueIn: 3, fails: 0 } },
@@ -136,6 +154,9 @@ export const failedEval = (): Profile => ({
 export const completed = (): Profile => ({
   ...fresh(),
   diagnosed: true,
+  routeComplete: true,
+  routeConcepts: CONCEPTS.map((c) => c.id),
+  routeDetails: {},
   mastery: { prim: 0.96, reglas: 0.92, metodos: 0.88, definida: 0.9, tfc: 0.87, area: 0.85, impropia: 0.78, longitud: 0.84, solidos: 0.8, series: 0.76, centroides: 0.82, pappus: 0.79 },
   current: null,
   reviews: { metodos: { dueIn: 1, fails: 0 }, reglas: { dueIn: 4, fails: 0 }, prim: { dueIn: 9, fails: 0 } },
