@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Award, Check, Eye, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
-import { REINFORCE, REVIEWS, byId, norm, unlocks, type Activity, type Id } from "./data";
+import { ACTIVITIES, REINFORCE, REVIEWS, byId, norm, unlocks, type Activity, type Id } from "./data";
 import type { Ctx } from "./screens";
 import { conceptDescription, conceptName, dueLabel, dueList, dueToday, isRouteComplete, levelOf, routeConceptCount, routeConcepts, routeMasteredCount, nextAction, overallMastery, status } from "./state";
 import { Bar, Btn, Card, CycleStrip, Difficulty, Expr, FocusShell, Label, Mark, PageHeader, Pill, Ring, StatusIcon, cx, pct } from "./ui";
@@ -294,7 +294,7 @@ export function ReviewList({ c }: { c: Ctx }) {
             <section>
               <Label className="mb-3">Próximos</Label>
               <div className="divide-y divide-line rounded-md border border-line bg-surface">
-                {later.length === 0 && <div className="p-5 text-muted">Sin repasos programados.</div>}
+                {later.length === 0 && <div className="p-5 text-muted">No hay repasos futuros programados</div>}
                 {later.map(([id, r]) => (<div key={id} className="flex items-center gap-4 px-5 py-3.5"><span className="flex-1 text-lg">{byId(id).name}</span><span className="font-mono text-sm text-muted">{dueLabel(r.dueIn)}</span></div>))}
               </div>
             </section>
@@ -386,7 +386,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
   const inCur = p.current && !p.reinforce.includes(p.current) ? 1 : 0;
   const pending = Math.max(0, total - m - reinf - inCur);
   const seg: [string, number, string][] = [["Dominados", m, "bg-sage"], ["En curso", inCur, "bg-brass"], ["Refuerzo", reinf, "bg-clay"], ["Pendientes", pending, "bg-line"]];
-  const due = dueList(p).slice(0, 4);
+  const due = dueList(p).filter(([, review]) => review.dueIn > 0).slice(0, 4);
   const complete = isRouteComplete(p);
   return (
     <div>
@@ -422,13 +422,13 @@ export function ProgressScreen({ c }: { c: Ctx }) {
             <div className="p-6 pb-3"><Label>Historial de evaluaciones</Label></div>
             <table className="w-full text-left">
               <tbody className="divide-y divide-line">
-                {p.history.length === 0 && <tr><td colSpan={4} className="px-6 py-5 text-muted">Todavía no hay evaluaciones registradas en esta sesión.</td></tr>}
+                {p.history.length === 0 && <tr><td colSpan={4} className="px-6 py-5 text-muted">Aún no hay actividades en tu historial.</td></tr>}
                 {p.history.map((h, i) => (
                   <tr key={i}>
                     <td className="py-3 pl-6 font-mono text-xs text-muted">{h.date}</td>
                     <td className="py-3 pr-3"><div className="text-[16px]">{h.label}</div><div className="font-mono text-[10px] uppercase tracking-wider text-faint">{h.kind}</div></td>
                     <td className="py-3 text-right font-mono">{h.score ?? "—"}</td>
-                    <td className="py-3 pl-4 pr-6 text-right">{h.passed === null ? <Pill>Perfil</Pill> : h.passed ? <Pill tone="sage">Aprobada</Pill> : <Pill tone="clay">Refuerzo</Pill>}</td>
+                    <td className="py-3 pl-4 pr-6 text-right">{h.passed === null ? <Pill>Sin veredicto</Pill> : h.passed ? <Pill tone="sage">Aprobada</Pill> : <Pill tone="clay">Refuerzo</Pill>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -446,7 +446,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
           </Card>
           <Card className="p-6">
             <Label className="mb-3">Próximos repasos</Label>
-            <ul className="space-y-2">{due.map(([id, r]) => <li key={id} className="flex justify-between"><span>{byId(id).name}</span><span className="font-mono text-xs text-muted">{dueLabel(r.dueIn)}</span></li>)}</ul>
+            {due.length === 0 ? <p className="text-muted">No hay repasos futuros programados.</p> : <ul className="space-y-2">{due.map(([id, r]) => <li key={id} className="flex justify-between"><span>{byId(id).name}</span><span className="font-mono text-xs text-muted">{dueLabel(r.dueIn)}</span></li>)}</ul>}
           </Card>
           <Card tone={complete ? "sage" : undefined} className="p-6">
             <div className="mb-2 flex items-center gap-2"><Award size={16} className={complete ? "text-sage" : "text-faint"} /><Label>Evaluación global</Label></div>

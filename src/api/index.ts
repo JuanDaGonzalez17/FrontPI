@@ -37,6 +37,9 @@ export type {
   ShortEvalResultDto,
   FlashcardDto,
   ReviewQueueItemDto,
+  ActivityHistoryType,
+  ActivityHistoryItemDto,
+  UpcomingReviewDto,
   ReviewEstado,
   ReviewSessionDto,
   ReviewGradePayload,
@@ -57,8 +60,12 @@ export * as practiceApi from './services/practiceApi';
 export * as evaluationApi from './services/evaluationApi';
 export * as reviewApi from './services/reviewApi';
 export * as globalExamApi from './services/globalExamApi';
+export * as historyApi from './services/historyApi';
+export { getActivityHistory } from './services/historyApi';
+export { getUpcomingReviews } from './services/reviewApi';
 
 // Mapeadores de dominio
 export * from './mappers/conceptMapper';
 export * as conceptMapper from './mappers/conceptMapper';
 export * from './mappers/activityMapper';
+export * from './mappers/historyMapper';

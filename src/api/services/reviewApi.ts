@@ -16,6 +16,7 @@ import type {
   ReviewGradePayload,
   ReviewGradeDto,
   ReviewFinishDto,
+  UpcomingReviewDto,
 } from '../types';
 
 /**
@@ -34,6 +35,16 @@ export function getDueReviews(subjectId: string): Promise<ReviewQueueItemDto[]> 
 		consecutiveLapses: progress.consecutiveLapses,
 		card: { id: card.id, front: card.front, back: card.back },
 	})));
+}
+
+/**
+ * Obtiene las tarjetas programadas para una fecha futura, ordenadas por proximidad.
+ *
+ * @param subjectId - UUID de la asignatura
+ */
+export async function getUpcomingReviews(subjectId: string): Promise<UpcomingReviewDto[]> {
+  const reviews = await apiGet<unknown>(`/subjects/${subjectId}/reviews/upcoming`);
+  return Array.isArray(reviews) ? (reviews as UpcomingReviewDto[]) : [];
 }
 
 /**

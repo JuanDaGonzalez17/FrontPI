@@ -16,10 +16,11 @@ import { PracticeRunner } from "./PracticeRunner";
 import { EvalRunner } from "./EvalRunner";
 import { GlobalExamRunner } from "./GlobalExamRunner";
 import { ReviewRunner } from "./ReviewRunner";
-import { reviewApi, globalExamApi } from "./api";
+import { reviewApi, globalExamApi, getActivityHistory } from "./api";
 import { evaluationApi } from "./api";
 import { diagnosticApi, curriculumApi, learningPathApi } from "./api";
 import { buildConceptMaps, diagProfileToMastery, applyLearningPath, type ConceptMaps } from "./api/mappers/conceptMapper";
+import { mapHistory, mapReviews } from "./api/mappers/historyMapper";
 import { useAuth } from "./context/AuthContext";
 import { CogniaApiError } from "./api/client";
 import type { ActivityDto, DiagnosticProfileDto, LearningPathDto, ShortEvalResultDto, ReviewQueueItemDto, ReviewSessionResultDto, GlobalExamResultDto } from "./api/types";
@@ -32,6 +33,16 @@ async function getOrCreateLearningPath() {
   } catch (error) {
     if (!(error instanceof CogniaApiError) || error.apiError.status !== 404) throw error;
     return learningPathApi.generatePath(SUBJECT_ID);
+  }
+}
+
+async function optionalBackendData<T>(label: string, request: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    console.warn(`No se pudo cargar ${label}.`, error);
+    if (error instanceof CogniaApiError && error.apiError.status === 401) throw error;
+    return fallback;
   }
 }
 
@@ -128,6 +139,26 @@ export default function App() {
     } catch {
       // Keep the rest of the profile available if the optional due-card endpoint fails.
     }
+  }, []);
+
+  const refreshHistory = useCallback(async (apply = true) => {
+    const [concepts, due, upcoming, history] = await Promise.all([
+      optionalBackendData("los conceptos para mapear repasos", () => curriculumApi.getConcepts(SUBJECT_ID), []),
+      optionalBackendData("los repasos vencidos", () => reviewApi.getDueReviews(SUBJECT_ID), []),
+      optionalBackendData("los repasos futuros", () => reviewApi.getUpcomingReviews(SUBJECT_ID), []),
+      optionalBackendData("el historial de actividad", () => getActivityHistory(SUBJECT_ID), []),
+    ]);
+    const maps = buildConceptMaps(concepts);
+    const now = new Date();
+    const snapshot = {
+      history: mapHistory(history, now),
+      reviews: mapReviews(due, upcoming, now, maps.uuidToSlug),
+      conceptMaps: maps,
+    };
+    if (apply) {
+      setP((previous) => ({ ...previous, history: snapshot.history, reviews: snapshot.reviews }));
+    }
+    return snapshot;
   }, []);
 
   const refreshKnowledgeProfile = useCallback(async () => {
@@ -349,35 +380,23 @@ export default function App() {
 
     const loadBackendProfile = async () => {
       try {
-        const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
-        const maps = buildConceptMaps(concepts);
-        const backendProfile = await diagnosticApi.getProfile(auth.user!.id, SUBJECT_ID);
+        const [backendProfile, path, activitySnapshot] = await Promise.all([
+          diagnosticApi.getProfile(auth.user!.id, SUBJECT_ID),
+          optionalBackendData("la ruta de aprendizaje", () => learningPathApi.getActivePath(SUBJECT_ID), null as LearningPathDto | null),
+          refreshHistory(false),
+        ]);
+        const { history, reviews, conceptMaps: maps } = activitySnapshot;
         const mastery = diagProfileToMastery(backendProfile, maps);
         let loadedProfile: Profile = {
           ...fresh(),
           diagnosed: backendProfile.diagnosticCompleted,
           mastery: { ...zero(), ...mastery },
+          history,
+          reviews,
         };
         loadedProfile.current = firstOpen(loadedProfile);
 
-        try {
-          const due = await reviewApi.getDueReviews(SUBJECT_ID);
-          for (const item of due) {
-            const slug = maps.uuidToSlug.get(item.conceptId);
-            if (slug) loadedProfile.reviews[slug] = { dueIn: 0, fails: item.consecutiveLapses };
-          }
-        } catch {
-          // The knowledge profile and route remain usable when no review queue is available.
-        }
-
-        if (backendProfile.diagnosticCompleted) {
-          try {
-            const path = await learningPathApi.getActivePath(SUBJECT_ID);
-            loadedProfile = applyLearningPath(loadedProfile, path, maps);
-          } catch (error) {
-            if (!(error instanceof CogniaApiError) || error.apiError.status !== 404) throw error;
-          }
-        }
+        if (backendProfile.diagnosticCompleted && path) loadedProfile = applyLearningPath(loadedProfile, path, maps);
 
         if (!cancelled) {
           setDiagMaps(maps);
@@ -386,7 +405,9 @@ export default function App() {
           setFlash(null);
         }
       } catch (error) {
-        if (!cancelled && error instanceof CogniaApiError && error.apiError.status === 404) {
+        if (error instanceof CogniaApiError && error.apiError.status === 401) {
+          auth.logout();
+        } else if (!cancelled && error instanceof CogniaApiError && error.apiError.status === 404) {
           setP(fresh());
           setRecognized([]);
         } else if (!cancelled) {
@@ -401,7 +422,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth.isLoading, auth.isAuthenticated, auth.user?.id]);
+  }, [auth.isLoading, auth.isAuthenticated, auth.user?.id, auth.logout, refreshHistory]);
 
   if (auth.isLoading) {
     return (

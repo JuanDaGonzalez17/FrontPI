@@ -178,6 +178,28 @@ export interface ShortEvalResultDto {
 // Repasos Espaciados SM-2
 // ---------------------------------------------------------------------------
 
+export type ActivityHistoryType = 'DIAGNOSTICO' | 'EVALUACION_CORTA' | 'REPASO' | 'EXAMEN_GLOBAL';
+
+export interface ActivityHistoryItemDto {
+  id: string;
+  type: ActivityHistoryType;
+  conceptId: string | null;
+  conceptName: string;
+  score: number | null;
+  passed: boolean | null;
+  date: string;
+  attempt: number | null;
+}
+
+export interface UpcomingReviewDto {
+  progressId: string;
+  conceptId: string;
+  conceptName: string;
+  nextReviewAt: string;
+  intervalDays: number;
+  consecutiveLapses: number;
+}
+
 export interface FlashcardDto {
   id: string;
   front: string;
