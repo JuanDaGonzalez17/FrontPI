@@ -34,6 +34,11 @@ export interface Ctx {
   reviewLoading: boolean;
   startGlobalExamFlow: () => Promise<void>;
   globalExamLoading: boolean;
+  diagnosticPathError?: string | null;
+  diagnosticFinalized?: boolean;
+  retryDiagnosticPath?: () => Promise<void>;
+  syncWarning?: string | null;
+  retrySync?: () => Promise<void>;
 }
 
 const SUBJECT = {
@@ -341,14 +346,16 @@ function PathBoard({ c, hero }: { c: Ctx; hero?: boolean }) {
 export function PathNew({ c }: { c: Ctx }) {
   const { p } = c;
   const known = c.recognized.length;
+  const canStart = Boolean(p.current);
   return (
     <div>
       <PageHeader
         kicker="Ruta generada a partir de tu diagnóstico"
         title="Esta es tu ruta de aprendizaje"
         sub={p.current ? <>Reconocimos <b className="text-sage">{known} conceptos como dominados</b>. Empezarás en <b className="text-brass">{conceptName(p, p.current)}</b>, y de ahí seguirás las ramas que se abren.</> : "Ya dominas todo lo evaluado."}
-        right={<Btn size="lg" onClick={() => c.nav("concept")} icon={<ArrowRight size={18} />}>Comenzar mi ruta</Btn>}
+        right={canStart ? <Btn size="lg" onClick={() => c.nav("concept")} icon={<ArrowRight size={18} />}>Comenzar mi ruta</Btn> : <span className="text-sm text-muted">{c.pathLoading ? "Cargando el paso asignado…" : "Aún no hay un paso activo en la ruta."}</span>}
       />
+      {!canStart && !c.pathLoading && <Card className="mb-6 border-clay/40 p-5"><p className="text-clay">{c.diagnosticPathError ?? "No se pudo confirmar un paso activo de tu ruta."}</p><Btn className="mt-3" onClick={() => c.retryDiagnosticPath?.()} disabled={c.pathLoading}>Reintentar carga de ruta</Btn></Card>}
       <div className="mb-6 grid gap-px overflow-hidden rounded-md border border-line bg-line md:grid-cols-3">
         {[
           ["Ya dominas", `${known}`, "text-sage", "Los omitimos: se repasarán más adelante."],
@@ -358,7 +365,7 @@ export function PathNew({ c }: { c: Ctx }) {
           <div key={k} className="bg-surface p-5"><Label className="mb-1">{k}</Label><div className={cx("text-2xl font-medium", cl)}>{v}</div><p className="text-[15px] text-muted">{d}</p></div>
         ))}
       </div>
-      <PathBoard c={c} hero />
+      {canStart && <PathBoard c={c} hero />}
     </div>
   );
 }
