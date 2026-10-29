@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { BarChart3, CalendarClock, Home as HomeIcon, Library, Route } from "lucide-react";
 import { CONCEPTS, THRESH, byId, type Id } from "./data";
 import {
@@ -87,11 +87,19 @@ export default function App() {
   const [globalExamSessionId, setGlobalExamSessionId] = useState<string | null>(null);
   const [globalExamActivities, setGlobalExamActivities] = useState<ActivityDto[]>([]);
   const [globalExamLoading, setGlobalExamLoading] = useState(false);
+  const [diagnosticPathError, setDiagnosticPathError] = useState<string | null>(null);
+  const [diagnosticFinalized, setDiagnosticFinalized] = useState(false);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
+  const refreshGeneration = useRef(0);
+  const diagnosticRetrying = useRef(false);
+  const diagnosticPathLock = useRef(false);
 
   const nav = useCallback((s: Screen) => setScreen(s), []);
 
   const startDiagnostic = useCallback(async () => {
     setDiagLoading(true);
+    setDiagnosticFinalized(false);
+    setDiagnosticPathError(null);
     try {
       const [session, concepts] = await Promise.all([
         diagnosticApi.startDiagnostic(SUBJECT_ID),
@@ -116,69 +124,87 @@ export default function App() {
       const maps = buildConceptMaps(concepts);
       setLearningPath(path);
       setP((prev) => applyLearningPath(prev, path, maps));
+      setFlash(null);
     } catch (e) {
-      setFlash(e instanceof Error ? e.message : "No se pudo cargar la ruta de aprendizaje.");
+      throw e;
     } finally {
       setPathLoading(false);
     }
   }, []);
 
-  const refreshDueReviews = useCallback(async () => {
-    try {
-      const [concepts, due] = await Promise.all([
-        curriculumApi.getConcepts(SUBJECT_ID),
-        reviewApi.getDueReviews(SUBJECT_ID),
-      ]);
-      const maps = buildConceptMaps(concepts);
-      const reviews: Profile["reviews"] = {};
-      for (const item of due) {
-        const slug = maps.uuidToSlug.get(item.conceptId);
-        if (slug) reviews[slug] = { dueIn: 0, fails: item.consecutiveLapses };
-      }
-      setP((previous) => ({ ...previous, reviews }));
-    } catch {
-      // Keep the rest of the profile available if the optional due-card endpoint fails.
-    }
-  }, []);
-
   const refreshHistory = useCallback(async (apply = true) => {
-    const [concepts, due, upcoming, history] = await Promise.all([
-      optionalBackendData("los conceptos para mapear repasos", () => curriculumApi.getConcepts(SUBJECT_ID), []),
-      optionalBackendData("los repasos vencidos", () => reviewApi.getDueReviews(SUBJECT_ID), []),
-      optionalBackendData("los repasos futuros", () => reviewApi.getUpcomingReviews(SUBJECT_ID), []),
-      optionalBackendData("el historial de actividad", () => getActivityHistory(SUBJECT_ID), []),
+    const results = await Promise.allSettled([
+      curriculumApi.getConcepts(SUBJECT_ID),
+      reviewApi.getDueReviews(SUBJECT_ID),
+      reviewApi.getUpcomingReviews(SUBJECT_ID),
+      getActivityHistory(SUBJECT_ID),
     ]);
-    const maps = buildConceptMaps(concepts);
+    const [concepts, due, upcoming, history] = results;
+    const warnings: string[] = [];
+    if (concepts.status === "rejected") { console.warn("No se pudieron cargar los conceptos para mapear repasos.", concepts.reason); warnings.push("mapeo de repasos"); }
+    if (due.status === "rejected") { console.warn("No se pudieron cargar los repasos vencidos.", due.reason); warnings.push("repasos vencidos"); }
+    if (upcoming.status === "rejected") { console.warn("No se pudieron cargar los repasos futuros.", upcoming.reason); warnings.push("repasos futuros"); }
+    if (history.status === "rejected") { console.warn("No se pudo cargar el historial de actividad.", history.reason); warnings.push("historial"); }
+    const maps = buildConceptMaps(concepts.status === "fulfilled" ? concepts.value : []);
     const now = new Date();
     const snapshot = {
-      history: mapHistory(history, now),
-      reviews: mapReviews(due, upcoming, now, maps.uuidToSlug),
+      history: history.status === "fulfilled" ? mapHistory(history.value, now) : null,
+      reviews: concepts.status === "fulfilled" && due.status === "fulfilled" && upcoming.status === "fulfilled"
+        ? mapReviews(due.value, upcoming.value, now, maps.uuidToSlug)
+        : null,
       conceptMaps: maps,
+      warnings,
     };
     if (apply) {
-      setP((previous) => ({ ...previous, history: snapshot.history, reviews: snapshot.reviews }));
+      setP((previous) => ({ ...previous, ...(snapshot.history ? { history: snapshot.history } : {}), ...(snapshot.reviews ? { reviews: snapshot.reviews } : {}) }));
     }
     return snapshot;
   }, []);
 
   const refreshKnowledgeProfile = useCallback(async () => {
-    if (!auth.user) return;
-    try {
-      const [concepts, profile] = await Promise.all([
-        curriculumApi.getConcepts(SUBJECT_ID),
-        diagnosticApi.getProfile(auth.user.id, SUBJECT_ID),
-      ]);
-      const maps = buildConceptMaps(concepts);
-      const mastery = diagProfileToMastery(profile, maps);
-      setP((previous) => ({ ...previous, mastery: { ...previous.mastery, ...mastery } }));
-      setRecognized(CONCEPTS.filter((concept) => (mastery[concept.id] ?? 0) >= THRESH).map((concept) => concept.id));
-    } catch (e) {
-      setFlash(e instanceof Error ? e.message : "No se pudo actualizar el perfil de dominio.");
-    }
+    if (!auth.user) throw new Error("No hay una sesión activa para actualizar el dominio.");
+    const [concepts, profile] = await Promise.all([
+      curriculumApi.getConcepts(SUBJECT_ID),
+      diagnosticApi.getProfile(auth.user.id, SUBJECT_ID),
+    ]);
+    const maps = buildConceptMaps(concepts);
+    return { mastery: diagProfileToMastery(profile, maps), maps };
   }, [auth.user?.id]);
+
+  const synchronizeProgress = useCallback(async () => {
+    const generation = ++refreshGeneration.current;
+    const results = await Promise.allSettled([
+      refreshHistory(false),
+      refreshKnowledgeProfile(),
+      (async () => {
+        const path = await getOrCreateLearningPath();
+        const concepts = await curriculumApi.getConcepts(SUBJECT_ID);
+        return { path, maps: buildConceptMaps(concepts) };
+      })(),
+    ]);
+    if (generation !== refreshGeneration.current) return;
+    const [activity, knowledge, route] = results;
+    const warnings: string[] = [];
+    if (activity.status === "rejected") { console.warn("No se pudo actualizar historial y repasos.", activity.reason); warnings.push("historial y repasos"); }
+    else warnings.push(...activity.value.warnings);
+    if (knowledge.status === "rejected") { console.warn("No se pudo actualizar el dominio.", knowledge.reason); warnings.push("dominio"); }
+    if (route.status === "rejected") { console.warn("No se pudo actualizar la ruta.", route.reason); warnings.push("ruta"); }
+    setP((previous) => {
+      let next = { ...previous };
+      if (activity.status === "fulfilled") next = { ...next, ...(activity.value.history ? { history: activity.value.history } : {}), ...(activity.value.reviews ? { reviews: activity.value.reviews } : {}) };
+      if (knowledge.status === "fulfilled") next = { ...next, mastery: { ...next.mastery, ...knowledge.value.mastery } };
+      if (route.status === "fulfilled") next = applyLearningPath(next, route.value.path, route.value.maps);
+      return next;
+    });
+    if (knowledge.status === "fulfilled") setRecognized(CONCEPTS.filter((concept) => (knowledge.value.mastery[concept.id] ?? 0) >= THRESH).map((concept) => concept.id));
+    if (route.status === "fulfilled") setLearningPath(route.value.path);
+    setSyncWarning(warnings.length ? `No se pudo actualizar ${warnings.join(", ")}. Reintenta para sincronizar.` : null);
+  }, [refreshHistory, refreshKnowledgeProfile]);
 
   const finishDiagnostic = useCallback(
     async (profile: DiagnosticProfileDto) => {
+      if (diagnosticPathLock.current) return;
+      diagnosticPathLock.current = true;
       if (diagMaps) {
         const mastery = diagProfileToMastery(profile, diagMaps);
         const nextProfile: Profile = {
@@ -186,15 +212,37 @@ export default function App() {
           diagnosed: profile.diagnosticCompleted,
           mastery: { ...zero(), ...mastery },
         };
-        nextProfile.current = firstOpen(nextProfile);
         setP(nextProfile);
         setRecognized(CONCEPTS.filter((k) => (mastery[k.id] ?? 0) >= THRESH).map((k) => k.id));
-        if (profile.diagnosticCompleted) await ensurePath();
+        if (profile.diagnosticCompleted) {
+          setDiagnosticFinalized(true);
+          try { await ensurePath(); setDiagnosticPathError(null); nav("diag-summary"); }
+          catch (error) { setDiagnosticPathError(error instanceof Error ? error.message : "No se pudo cargar la ruta de aprendizaje."); }
+          finally { diagnosticPathLock.current = false; }
+          return;
+        }
       }
+      diagnosticPathLock.current = false;
       nav("diag-summary");
     },
     [diagMaps, ensurePath, nav],
   );
+
+  const retryDiagnosticPath = useCallback(async () => {
+    if (diagnosticRetrying.current || diagnosticPathLock.current || !diagnosticFinalized) return;
+    diagnosticPathLock.current = true;
+    diagnosticRetrying.current = true;
+    setDiagnosticPathError(null);
+    try {
+      await ensurePath();
+      nav("diag-summary");
+    } catch (error) {
+      setDiagnosticPathError(error instanceof Error ? error.message : "No se pudo cargar la ruta de aprendizaje.");
+    } finally {
+      diagnosticPathLock.current = false;
+      diagnosticRetrying.current = false;
+    }
+  }, [diagnosticFinalized, ensurePath, nav]);
 
   const startShortEval = useCallback(async () => {
     setEvalLoading(true);
@@ -234,28 +282,11 @@ export default function App() {
         attempt: p.evalAttempts + 1,
         nextId: p.current,
       });
-      setP((prev) => {
-        const np: Profile = { ...prev, mastery: { ...prev.mastery }, reviews: { ...prev.reviews }, history: [{ kind: "Evaluación", label: byId(id).name, score, passed, date: "Hoy" }, ...prev.history], evalAttempts: prev.evalAttempts + 1 };
-        if (passed) {
-          np.mastery[id] = result.score / 100;
-          np.reinforce = prev.reinforce.filter((r) => r !== id);
-          np.weakSkills = [];
-          np.practiceDone = false;
-          np.reinforceDone = false;
-          np.current = firstOpen(np);
-        } else {
-          np.mastery[id] = (result.score / 100) * 0.85;
-          np.reinforce = [...new Set([...prev.reinforce, id])];
-          np.reinforceDone = false;
-        }
-        return np;
-      });
-      await ensurePath();
-      await refreshKnowledgeProfile();
-      await refreshDueReviews();
+      setP((previous) => ({ ...previous, evalAttempts: previous.evalAttempts + 1 }));
+      await synchronizeProgress();
       nav("eval-result");
     },
-    [p.current, p.evalAttempts, ensurePath, refreshKnowledgeProfile, refreshDueReviews, nav],
+    [p.current, p.evalAttempts, synchronizeProgress, nav],
   );
 
   const startReviewSessionFlow = useCallback(async () => {
@@ -280,9 +311,6 @@ export default function App() {
   const finishReviewBackend = useCallback(
     async (result: ReviewSessionResultDto) => {
       const amnesiaDetected = Boolean(result.amnesiaDetectada);
-      if (amnesiaDetected) {
-        await ensurePath();
-      }
       const graded = result.grades[0];
       const queueItem = reviewItems.find((item) => item.progressId === graded?.progressId);
       let slug: Id | null = null;
@@ -295,11 +323,11 @@ export default function App() {
           const profile = await diagnosticApi.getProfile(auth.user.id, SUBJECT_ID);
           const currentMastery = diagProfileToMastery(profile, maps);
           if (slug && currentMastery[slug] !== undefined) mastery = currentMastery[slug]!;
-          setP((previous) => ({ ...previous, mastery: { ...previous.mastery, ...currentMastery } }));
         }
       } catch {
         // Keep the result usable when refreshing the summary profile fails.
       }
+      await synchronizeProgress();
       if (!slug) {
         setFlash("Repaso finalizado, pero no se pudo asociar la tarjeta con un concepto de la ruta.");
         nav("review-list");
@@ -321,10 +349,9 @@ export default function App() {
           ? "Se detectó amnesia conceptual. Tu ruta se ha adaptado."
           : `${result.remembered} de ${result.reviewed} tarjetas se recordaron; la programación se actualizó según tus respuestas.`,
       });
-      await refreshDueReviews();
       nav("review-result");
     },
-    [auth.user, reviewItems, ensurePath, refreshDueReviews, nav],
+    [auth.user, reviewItems, synchronizeProgress, nav],
   );
 
   const startGlobalExamFlow = useCallback(async () => {
@@ -353,18 +380,13 @@ export default function App() {
         if (!slug || summary.total <= 0) continue;
         (summary.correct / summary.total >= 0.7 ? strong : weak).push(slug);
       }
-      if (auth.user) {
-        const profile = await diagnosticApi.getProfile(auth.user.id, SUBJECT_ID);
-        const mastery = diagProfileToMastery(profile, maps);
-        setP((previous) => ({ ...previous, mastery: { ...previous.mastery, ...mastery } }));
-        setRecognized(CONCEPTS.filter((concept) => (mastery[concept.id] ?? 0) >= THRESH).map((concept) => concept.id));
-      }
     } catch (e) {
       setFlash(e instanceof Error ? e.message : "No se pudo actualizar el dominio tras el examen global.");
     }
+    await synchronizeProgress();
     setGlobalResult({ score, passed: result.passed, strong, weak });
     nav("global-result");
-  }, [auth.user, nav]);
+  }, [nav, synchronizeProgress]);
 
   useEffect(() => { window.scrollTo(0, 0); }, [screen]);
 
@@ -391,8 +413,8 @@ export default function App() {
           ...fresh(),
           diagnosed: backendProfile.diagnosticCompleted,
           mastery: { ...zero(), ...mastery },
-          history,
-          reviews,
+          history: history ?? [],
+          reviews: reviews ?? {},
         };
         loadedProfile.current = firstOpen(loadedProfile);
 
@@ -524,7 +546,7 @@ export default function App() {
 
   const startReview = (id: Id) => { setReviewTarget(id); void startReviewSessionFlow(); };
 
-  const ctx: Ctx = { p, studentName: auth.user?.fullName ?? "Estudiante", nav, recognized, flash, clearFlash: () => setFlash(null), evalResult, reviewResult, globalResult, reviewTarget, startReview, finishActivities, continueAfterPass, startDiagnostic, diagLoading, ensurePath, pathLoading, startShortEval, evalLoading, startReviewSessionFlow, reviewLoading, startGlobalExamFlow, globalExamLoading };
+  const ctx: Ctx = { p, studentName: auth.user?.fullName ?? "Estudiante", nav, recognized, flash, clearFlash: () => setFlash(null), evalResult, reviewResult, globalResult, reviewTarget, startReview, finishActivities, continueAfterPass, startDiagnostic, diagLoading, ensurePath, pathLoading, startShortEval, evalLoading, startReviewSessionFlow, reviewLoading, startGlobalExamFlow, globalExamLoading, diagnosticPathError, diagnosticFinalized, retryDiagnosticPath, syncWarning, retrySync: synchronizeProgress };
 
   const focus = FOCUS.includes(screen);
   let view;
@@ -534,7 +556,9 @@ export default function App() {
     case "subject": view = <Subject c={ctx} />; break;
     case "diag-intro": view = <DiagIntro c={ctx} />; break;
     case "diag":
-      view = diagLoading || !diagSessionId
+      view = diagnosticFinalized
+        ? <div className="mx-auto max-w-2xl py-16"><div className="rounded-md border border-line bg-surface p-6"><h1 className="text-2xl font-medium">{pathLoading ? "Preparando tu ruta…" : "No pudimos cargar tu ruta"}</h1><p className="mt-3 text-muted">{pathLoading ? "El diagnóstico ya quedó guardado. Estamos aplicando el paso activo que asignó el backend." : diagnosticPathError}</p>{!pathLoading && <button className="mt-5 rounded-sm border border-line px-5 py-3 disabled:opacity-40" onClick={() => void retryDiagnosticPath()} disabled={pathLoading}>Reintentar ruta</button>}</div></div>
+        : diagLoading || !diagSessionId
         ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando diagnóstico…</span></div>
         : <DiagnosticRunner activities={diagActivities} sessionId={diagSessionId} subjectId={SUBJECT_ID} studentId={auth.user!.id} onDone={finishDiagnostic} onExit={() => nav("diag-intro")} />;
       break;
@@ -574,6 +598,9 @@ export default function App() {
     default: view = <Home c={ctx} />; break;
   }
 
+  if (syncWarning) {
+    view = <div><div className="m-4 rounded-md border border-clay/40 bg-clay/10 p-4"><p className="text-clay">{syncWarning}</p><button className="mt-2 text-sm underline" onClick={() => void synchronizeProgress()}>Reintentar sincronización</button></div>{view}</div>;
+  }
   const activeGroup = NAV.find((n) => n.group.includes(screen))?.screen;
   const prog = p.diagnosed && routeConceptCount(p) ? routeMasteredCount(p) / routeConceptCount(p) : 0;
 
