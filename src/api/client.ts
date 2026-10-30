@@ -15,7 +15,9 @@ import type { ApiError } from './types';
 // Constantes de entorno
 // ---------------------------------------------------------------------------
 
-const BASE_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api/v1';
+const BASE_URL: string = (
+  import.meta.env.VITE_API_URL ?? 'https://cognia-9fq5.onrender.com/api/v1'
+).replace(/\/+$/, '');
 const DEFAULT_STUDENT_ID: string =
   import.meta.env.VITE_DEFAULT_STUDENT_ID ?? '30000000-0000-0000-0000-000000000001';
 
