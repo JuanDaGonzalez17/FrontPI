@@ -32,6 +32,12 @@ export interface AuthResponseDto {
   email: string;
 }
 
+export interface RegisterResponseDto {
+  studentId: string;
+  fullName: string;
+  email: string;
+}
+
 export interface StudentDto {
   id: string;
   fullName: string;
@@ -55,15 +61,11 @@ export async function login(email: string, password: string): Promise<AuthRespon
 }
 
 /**
- * Registra un nuevo estudiante.
- * Guarda el token y studentId en localStorage automáticamente.
+ * Registra un nuevo estudiante. El endpoint devuelve la cuenta, pero no un JWT;
+ * el inicio de sesión se realiza después desde AuthContext.
  */
-export async function register(email: string, password: string, fullName: string): Promise<AuthResponseDto> {
-  const res = await apiPost<AuthResponseDto>('/auth/register', { email, password, fullName });
-  localStorage.setItem('cognia_token', res.token);
-  localStorage.setItem('cognia_student_id', res.studentId);
-  localStorage.setItem('cognia_student_name', res.fullName);
-  return res;
+export function register(email: string, password: string, fullName: string): Promise<RegisterResponseDto> {
+  return apiPost<RegisterResponseDto>('/auth/register', { email, password, fullName });
 }
 
 /**

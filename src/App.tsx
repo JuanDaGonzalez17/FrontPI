@@ -455,15 +455,24 @@ export default function App() {
   }
 
   if (!auth.isAuthenticated) {
+    const normalizedEmail = authEmail.trim();
+    const normalizedName = authName.trim();
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+    const validRegistration = validEmail && authPassword.length >= 8 && normalizedName.length > 0;
+
     const submit = async (e: FormEvent) => {
       e.preventDefault();
       setAuthError(null);
+      if (authMode === "register" && !validRegistration) {
+        setAuthError("Ingresa un nombre, un correo válido y una contraseña de al menos 8 caracteres.");
+        return;
+      }
       setAuthSubmitting(true);
       try {
         if (authMode === "login") {
-          await auth.login(authEmail, authPassword);
+          await auth.login(normalizedEmail, authPassword);
         } else {
-          await auth.register(authEmail, authPassword, authName);
+          await auth.register(normalizedEmail, authPassword, normalizedName);
         }
       } catch (err) {
         setAuthError(err instanceof Error ? err.message : "Error de autenticación");
@@ -482,27 +491,40 @@ export default function App() {
                 className="w-full rounded border border-line bg-bg px-3 py-2"
                 placeholder="Nombre completo"
                 value={authName}
+                autoComplete="name"
+                required
                 onChange={(e) => setAuthName(e.target.value)}
               />
             )}
             <input
               className="w-full rounded border border-line bg-bg px-3 py-2"
               placeholder="Email"
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="email"
+              required
+              maxLength={150}
               value={authEmail}
+              onBlur={() => setAuthEmail((email) => email.trim())}
               onChange={(e) => setAuthEmail(e.target.value)}
             />
             <input
               className="w-full rounded border border-line bg-bg px-3 py-2"
               placeholder="Contraseña"
               type="password"
+              autoComplete={authMode === "register" ? "new-password" : "current-password"}
+              minLength={authMode === "register" ? 8 : undefined}
+              required
               value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
             />
+            {authMode === "register" && (
+              <p className="text-xs text-muted">Usa un correo válido y una contraseña de al menos 8 caracteres.</p>
+            )}
             {authError && <p className="text-sm text-clay">{authError}</p>}
             <button
               type="submit"
-              disabled={authSubmitting}
+              disabled={authSubmitting || (authMode === "register" && !validRegistration)}
               className="w-full rounded bg-brass px-4 py-2 font-medium text-bg disabled:opacity-50"
             >
               {authSubmitting ? "Procesando…" : authMode === "login" ? "Iniciar sesión" : "Registrarse"}

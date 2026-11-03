@@ -81,9 +81,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const register = useCallback(async (email: string, password: string, fullName: string) => {
-    const res = await authApi.register(email, password, fullName);
+    const normalizedEmail = email.trim();
+    const normalizedName = fullName.trim();
+    await authApi.register(normalizedEmail, password, normalizedName);
+    const res = await authApi.login(normalizedEmail, password);
     setToken(res.token);
-    setUser({ id: res.studentId, fullName: res.fullName, email: res.email ?? '' });
+    setUser({ id: res.studentId, fullName: res.fullName, email: res.email ?? normalizedEmail });
   }, []);
 
   const logout = useCallback(() => {
