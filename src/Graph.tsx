@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { CONCEPTS, byId, type Id } from "./data";
+import { ALL_CONCEPTS, byId, type Id } from "./data";
 import { conceptDescription, conceptName, routeConcepts, status, type Profile } from "./state";
 import { Bar, Btn, Label, Pill, StatusIcon, cx, pct, statusTone, type Tone } from "./ui";
 import { curriculumApi, buildConceptMaps } from "./api";
@@ -21,12 +21,12 @@ const NODE_TEXT: Record<Tone, string> = { sage: "text-sage", brass: "text-brass"
 
 export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: Profile; selected?: Id | null; onSelect: (id: Id) => void; recognized?: Id[] }) {
   const routeIds = routeConcepts(p);
-  const concepts = CONCEPTS.filter((concept) => routeIds.includes(concept.id));
+  const concepts = routeIds.map(byId);
   const width = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.col)) * GX) + W;
   const height = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.row)) * GY) + H;
   const [prereqMap, setPrereqMap] = useState<Record<Id, Id[]>>(() => {
     const m: Record<Id, Id[]> = {} as Record<Id, Id[]>;
-    CONCEPTS.forEach((c) => { m[c.id] = []; });
+    ALL_CONCEPTS.forEach((c) => { m[c.id] = []; });
     return m;
   });
 
@@ -38,7 +38,7 @@ export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: 
         const concepts = await curriculumApi.getConcepts(subjectId);
         const maps = buildConceptMaps(concepts);
         const next: Record<Id, Id[]> = {} as Record<Id, Id[]>;
-        CONCEPTS.forEach((c) => { next[c.id] = []; });
+        ALL_CONCEPTS.forEach((c) => { next[c.id] = []; });
         await Promise.all(
           concepts.map(async (concept) => {
             const slug = maps.uuidToSlug.get(concept.id);

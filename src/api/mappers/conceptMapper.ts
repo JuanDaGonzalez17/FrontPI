@@ -10,7 +10,7 @@
  */
 
 import type { ConceptDto, PathStepDto, PathStepEstado } from '../types';
-import { CONCEPTS, type Id } from '../../data';
+import { byId, CONCEPTS, OFFICIAL_CONCEPTS, type Id } from '../../data';
 import type { Status } from '../../state';
 
 // ---------------------------------------------------------------------------
@@ -28,13 +28,6 @@ export interface ConceptMaps {
   conceptBySlug: Map<Id, ConceptDto>;
 }
 
-const BACKEND_CODE_TO_FRONTEND_ID: Record<string, Id> = {
-  'C0.1': 'prim',
-  'C1.1': 'reglas',
-  'C2.1': 'definida',
-  'C3.1': 'impropia',
-};
-
 // ---------------------------------------------------------------------------
 // Construcción del mapeador desde la respuesta del backend
 // ---------------------------------------------------------------------------
@@ -42,11 +35,8 @@ const BACKEND_CODE_TO_FRONTEND_ID: Record<string, Id> = {
 /**
  * Construye los mapas bidireccionales a partir de los conceptos devueltos por la API.
  *
- * El backend debe devolver `codigo` que coincida con los slugs del frontend
- * (e.g., "prim", "reglas", "metodos", etc.).
- *
- * Si un concepto del backend no coincide con ningún slug conocido,
- * se ignora (no afecta al grafo visual existente).
+ * El currículo oficial usa el código del concepto como identificador estable
+ * (C0.1, C1.1, etc.). Los slugs se conservan para el modo de demostración.
  */
 export function buildConceptMaps(concepts: ConceptDto[]): ConceptMaps {
   const uuidToSlug: UuidToSlug = new Map();
@@ -54,7 +44,7 @@ export function buildConceptMaps(concepts: ConceptDto[]): ConceptMaps {
   const conceptBySlug: Map<Id, ConceptDto> = new Map();
 
   for (const c of concepts) {
-    const slug = BACKEND_CODE_TO_FRONTEND_ID[c.code]
+    const slug = OFFICIAL_CONCEPTS.find((concept) => concept.id === c.code)?.id
       ?? CONCEPTS.find((concept) => concept.id === c.code)?.id;
     if (!slug) continue;
     uuidToSlug.set(c.id, slug);
@@ -133,8 +123,9 @@ export function applyLearningPath(
     const slug = maps.uuidToSlug.get(step.conceptId);
     if (!slug) continue;
     if (!np.routeConcepts.includes(slug)) np.routeConcepts.push(slug);
+    np.mastery[slug] ??= 0;
     const concept = maps.conceptBySlug.get(slug);
-    if (concept) np.routeDetails[slug] = { name: concept.name, description: concept.description };
+    if (concept) np.routeDetails[slug] = { name: concept.name, description: concept.description || byId(slug).objective };
 
     switch (step.state) {
       case 'DOMINADO':

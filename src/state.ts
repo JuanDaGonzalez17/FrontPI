@@ -1,4 +1,4 @@
-import { CONCEPTS, REVIEWS, THRESH, byId, type Id } from "./data";
+import { ALL_CONCEPTS, CONCEPTS, REVIEWS, THRESH, byId, type Id } from "./data";
 
 export type Screen =
   | "home" | "subjects" | "subject"
@@ -63,7 +63,7 @@ export interface GlobalResult {
   weak: Id[];
 }
 
-export const zero = () => Object.fromEntries(CONCEPTS.map((c) => [c.id, 0])) as Record<Id, number>;
+export const zero = () => Object.fromEntries(ALL_CONCEPTS.map((c) => [c.id, 0])) as Record<Id, number>;
 
 export const status = (p: Profile, id: Id): Status =>
   p.reinforce.includes(id) ? "reinforce" : p.mastery[id] >= THRESH ? "mastered" : "pending";

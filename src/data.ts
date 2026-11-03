@@ -10,7 +10,14 @@ export type Id =
   | "solidos"
   | "series"
   | "centroides"
-  | "pappus";
+  | "pappus"
+  | "C0.1" | "C0.2" | "C0.3" | "C0.4" | "C0.5"
+  | "C1.1" | "C1.2"
+  | "C2.1" | "C2.2" | "C2.3" | "C2.4"
+  | "C3.1" | "C3.2" | "C3.3" | "C3.4" | "C3.5" | "C3.6"
+  | "C4.1" | "C4.2" | "C4.3"
+  | "C5.1" | "C5.2"
+  | "C6.1" | "C6.2" | "C6.3" | "C6.4";
 
 export interface Concept {
   id: Id;
@@ -38,8 +45,45 @@ export const CONCEPTS: Concept[] = [
   { id: "pappus", name: "Teorema de Pappus", col: 1, row: 7, prereqs: ["centroides"], objective: "Usar el centroide para obtener áreas y volúmenes de revolución sin integrar." },
 ];
 
-export const byId = (id: Id) => CONCEPTS.find((c) => c.id === id)!;
-export const unlocks = (id: Id) => CONCEPTS.filter((c) => c.prereqs.includes(id));
+const officialConceptRows: [Id, string, number, Id[], string][] = [
+  ["C0.1", "Álgebra y trigonometría", 0, [], "Aplicar factorización e identidades trigonométricas como fundamentos del cálculo integral."],
+  ["C0.2", "Funciones", 0, ["C0.1"], "Reconocer y operar con funciones necesarias para interpretar integrales."],
+  ["C0.3", "Límites", 0, ["C0.2"], "Comprender límites como fundamento de derivadas e integrales."],
+  ["C0.4", "Derivadas", 0, ["C0.3"], "Usar derivadas para verificar antiderivadas y aplicar el teorema fundamental."],
+  ["C0.5", "Regla de la cadena", 0, ["C0.4"], "Reconocer la regla de la cadena para preparar sustituciones."],
+  ["C1.1", "Antiderivada", 1, ["C0.4"], "Reconocer una función cuya derivada es el integrando."],
+  ["C1.2", "Constante de integración C", 1, ["C1.1"], "Expresar la familia de antiderivadas mediante la constante de integración."],
+  ["C2.1", "Regla de la potencia", 2, ["C1.2", "C0.1"], "Integrar potencias de x aplicando la regla de la potencia."],
+  ["C2.2", "Suma y resta de funciones", 2, ["C2.1"], "Integrar sumas y diferencias término a término."],
+  ["C2.3", "Múltiplo constante", 2, ["C2.1"], "Extraer constantes y aplicar linealidad al integrar."],
+  ["C2.4", "Integrales trigonométricas básicas", 2, ["C1.2", "C0.4"], "Integrar funciones trigonométricas elementales."],
+  ["C3.1", "Sustitución simple", 3, ["C2.2", "C2.3", "C2.4", "C0.5"], "Elegir una sustitución que simplifique la integral."],
+  ["C3.2", "Integración por partes", 3, ["C2.2", "C2.3", "C0.4"], "Aplicar integración por partes a productos de funciones."],
+  ["C3.3", "Integrales trigonométricas (potencias)", 3, ["C2.4", "C3.1", "C0.1"], "Resolver integrales que contienen potencias de funciones trigonométricas."],
+  ["C3.4", "Sustitución trigonométrica", 3, ["C3.1", "C3.3"], "Usar sustituciones trigonométricas para expresiones radicales."],
+  ["C3.5", "Fracciones parciales", 3, ["C3.1", "C0.1"], "Descomponer funciones racionales para facilitar su integración."],
+  ["C3.6", "Sustituciones diversas", 3, ["C3.1", "C3.5"], "Seleccionar sustituciones adicionales para integrales no inmediatas."],
+  ["C4.1", "Sumas de Riemann", 4, ["C0.2", "C0.3"], "Aproximar acumulaciones mediante sumas de Riemann."],
+  ["C4.2", "Integral definida", 4, ["C4.1", "C2.1"], "Calcular e interpretar integrales definidas."],
+  ["C4.3", "Teorema fundamental del cálculo", 4, ["C4.2", "C1.1", "C0.4"], "Relacionar derivación e integración para evaluar integrales definidas."],
+  ["C5.1", "Integrales impropias: límites infinitos", 5, ["C4.3", "C0.3"], "Analizar convergencia cuando el intervalo de integración es infinito."],
+  ["C5.2", "Integrales impropias: integrandos discontinuos", 5, ["C4.3", "C0.3"], "Analizar integrales con discontinuidades en el integrando."],
+  ["C6.1", "Área entre curvas", 6, ["C4.3"], "Calcular áreas de regiones delimitadas por curvas."],
+  ["C6.2", "Sólidos de revolución: método de discos", 6, ["C6.1"], "Calcular volúmenes de revolución mediante discos."],
+  ["C6.3", "Sólidos de revolución: método de arandelas", 6, ["C6.2"], "Calcular volúmenes de revolución mediante arandelas."],
+  ["C6.4", "Sólidos de revolución: método de capas", 6, ["C6.2"], "Calcular volúmenes de revolución mediante capas cilíndricas."],
+];
+
+const levelCounts = new Map<number, number>();
+export const OFFICIAL_CONCEPTS: Concept[] = officialConceptRows.map(([id, name, level, prereqs, objective]) => {
+  const col = levelCounts.get(level) ?? 0;
+  levelCounts.set(level, col + 1);
+  return { id, name, col, row: level + col * 0.22, prereqs, objective };
+});
+
+export const ALL_CONCEPTS = [...CONCEPTS, ...OFFICIAL_CONCEPTS];
+export const byId = (id: Id) => ALL_CONCEPTS.find((c) => c.id === id)!;
+export const unlocks = (id: Id) => ALL_CONCEPTS.filter((c) => c.prereqs.includes(id));
 
 export interface Question {
   id: string;

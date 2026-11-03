@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { BarChart3, CalendarClock, Home as HomeIcon, Library, Route } from "lucide-react";
-import { CONCEPTS, THRESH, byId, type Id } from "./data";
+import { THRESH, byId, type Id } from "./data";
 import {
   ActivitiesDone, ConceptScreen, EvalIntro, EvalResultScreen, FinalReady, GlobalIntro,
   GlobalResultScreen, ProgressScreen, ReviewList, ReviewResultScreen,
@@ -26,6 +26,10 @@ import { CogniaApiError } from "./api/client";
 import type { ActivityDto, DiagnosticProfileDto, LearningPathDto, ShortEvalResultDto, ReviewQueueItemDto, ReviewSessionResultDto, GlobalExamResultDto } from "./api/types";
 
 const SUBJECT_ID = "10000000-0000-0000-0000-000000000001";
+const recognizedIds = (mastery: Partial<Record<Id, number>>): Id[] =>
+  (Object.entries(mastery) as [Id, number][])
+    .filter(([, level]) => level >= THRESH)
+    .map(([id]) => id);
 
 async function getOrCreateLearningPath() {
   try {
@@ -196,7 +200,7 @@ export default function App() {
       if (route.status === "fulfilled") next = applyLearningPath(next, route.value.path, route.value.maps);
       return next;
     });
-    if (knowledge.status === "fulfilled") setRecognized(CONCEPTS.filter((concept) => (knowledge.value.mastery[concept.id] ?? 0) >= THRESH).map((concept) => concept.id));
+    if (knowledge.status === "fulfilled") setRecognized(recognizedIds(knowledge.value.mastery));
     if (route.status === "fulfilled") setLearningPath(route.value.path);
     setSyncWarning(warnings.length ? `No se pudo actualizar ${warnings.join(", ")}. Reintenta para sincronizar.` : null);
   }, [refreshHistory, refreshKnowledgeProfile]);
@@ -213,7 +217,7 @@ export default function App() {
           mastery: { ...zero(), ...mastery },
         };
         setP(nextProfile);
-        setRecognized(CONCEPTS.filter((k) => (mastery[k.id] ?? 0) >= THRESH).map((k) => k.id));
+        setRecognized(recognizedIds(mastery));
         if (profile.diagnosticCompleted) {
           setDiagnosticFinalized(true);
           try { await ensurePath(); setDiagnosticPathError(null); nav("diag-summary"); }
@@ -423,7 +427,7 @@ export default function App() {
         if (!cancelled) {
           setDiagMaps(maps);
           setP(loadedProfile);
-          setRecognized(CONCEPTS.filter((concept) => loadedProfile.mastery[concept.id] >= THRESH).map((concept) => concept.id));
+          setRecognized(recognizedIds(loadedProfile.mastery));
           setFlash(null);
         }
       } catch (error) {
