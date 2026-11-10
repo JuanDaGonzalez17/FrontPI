@@ -98,6 +98,16 @@ export default function App() {
   const diagnosticRetrying = useRef(false);
   const diagnosticPathLock = useRef(false);
 
+  useEffect(() => {
+    if (auth.isAuthenticated) return;
+    setAuthEmail("");
+    setAuthPassword("");
+    setAuthName("");
+    setAuthError(null);
+    setAuthMode("login");
+    setAuthSubmitting(false);
+  }, [auth.isAuthenticated]);
+
   const nav = useCallback((s: Screen) => setScreen(s), []);
 
   const startDiagnostic = useCallback(async () => {
@@ -511,6 +521,10 @@ export default function App() {
         } else {
           await auth.register(normalizedEmail, authPassword, normalizedName);
         }
+        setAuthEmail("");
+        setAuthPassword("");
+        setAuthName("");
+        setAuthError(null);
       } catch (err) {
         setAuthError(err instanceof Error ? err.message : "Error de autenticación");
       } finally {
@@ -522,7 +536,7 @@ export default function App() {
         <div className="w-full max-w-md rounded-md border border-line bg-surface p-8">
           <h1 className="text-2xl font-medium">Itinera</h1>
           <p className="mt-1 font-mono text-[11px] uppercase tracking-wider text-muted">Acceso al tutor adaptativo</p>
-          <form className="mt-6 space-y-4" onSubmit={submit}>
+          <form className="mt-6 space-y-4" onSubmit={submit} autoComplete="off">
             {authMode === "register" && (
               <input
                 className="w-full rounded border border-line bg-bg px-3 py-2"
@@ -538,7 +552,7 @@ export default function App() {
               placeholder="Email"
               type="text"
               inputMode="email"
-              autoComplete="email"
+              autoComplete="username"
               required
               maxLength={150}
               value={authEmail}
