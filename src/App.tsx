@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { BarChart3, CalendarClock, Home as HomeIcon, Library, Route } from "lucide-react";
+import { BarChart3, CalendarClock, Home as HomeIcon, Library, LogOut, Route } from "lucide-react";
 import { THRESH, byId, type Id } from "./data";
 import {
   ActivitiesDone, ConceptScreen, EvalIntro, EvalResultScreen, FinalReady, GlobalIntro,
@@ -119,6 +119,38 @@ export default function App() {
       setDiagLoading(false);
     }
   }, [nav]);
+
+  const clearDiagnosticState = useCallback(() => {
+    setDiagSessionId(null);
+    setDiagActivities([]);
+    setDiagMaps(null);
+    setDiagnosticFinalized(false);
+    setDiagnosticPathError(null);
+  }, []);
+
+  const clearProtectedState = useCallback(() => {
+    setScreen("home");
+    setP(fresh());
+    setRecognized([]);
+    setEvalResult(null);
+    setReviewResult(null);
+    setGlobalResult(null);
+    setReviewTarget(null);
+    setFlash(null);
+    setDiagSessionId(null);
+    setDiagActivities([]);
+    setDiagMaps(null);
+    setDiagnosticPathError(null);
+    setDiagnosticFinalized(false);
+    setLearningPath(null);
+    setEvalSessionId(null);
+    setEvalActivities([]);
+    setReviewSessionId(null);
+    setReviewItems([]);
+    setGlobalExamSessionId(null);
+    setGlobalExamActivities([]);
+    setSyncWarning(null);
+  }, []);
 
   const ensurePath = useCallback(async () => {
     setPathLoading(true);
@@ -397,6 +429,7 @@ export default function App() {
   useEffect(() => {
     if (auth.isLoading) return;
     if (!auth.isAuthenticated || !auth.user) {
+      clearProtectedState();
       setProfileLoading(false);
       return;
     }
@@ -448,7 +481,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth.isLoading, auth.isAuthenticated, auth.user?.id, auth.logout, refreshHistory]);
+  }, [auth.isLoading, auth.isAuthenticated, auth.user?.id, clearProtectedState, refreshHistory]);
 
   if (auth.isLoading) {
     return (
@@ -586,7 +619,16 @@ export default function App() {
         ? <div className="mx-auto max-w-2xl py-16"><div className="rounded-md border border-line bg-surface p-6"><h1 className="text-2xl font-medium">{pathLoading ? "Preparando tu ruta…" : "No pudimos cargar tu ruta"}</h1><p className="mt-3 text-muted">{pathLoading ? "El diagnóstico ya quedó guardado. Estamos aplicando el paso activo que asignó el backend." : diagnosticPathError}</p>{!pathLoading && <button className="mt-5 rounded-sm border border-line px-5 py-3 disabled:opacity-40" onClick={() => void retryDiagnosticPath()} disabled={pathLoading}>Reintentar ruta</button>}</div></div>
         : diagLoading || !diagSessionId
         ? <div className="flex min-h-[40vh] items-center justify-center"><span className="font-mono text-sm text-muted">Cargando diagnóstico…</span></div>
-        : <DiagnosticRunner activities={diagActivities} sessionId={diagSessionId} subjectId={SUBJECT_ID} studentId={auth.user!.id} onDone={finishDiagnostic} onExit={() => nav("diag-intro")} />;
+        : <DiagnosticRunner
+          activities={diagActivities}
+          sessionId={diagSessionId}
+          subjectId={SUBJECT_ID}
+          studentId={auth.user!.id}
+          onDone={finishDiagnostic}
+          onAbandoned={clearDiagnosticState}
+          onExit={() => nav("diag-intro")}
+          onRestart={() => void startDiagnostic()}
+        />;
       break;
     case "diag-summary": view = <DiagSummary c={ctx} />; break;
     case "path-new": view = <PathNew c={ctx} />; break;
@@ -629,6 +671,7 @@ export default function App() {
   }
   const activeGroup = NAV.find((n) => n.group.includes(screen))?.screen;
   const prog = p.diagnosed && routeConceptCount(p) ? routeMasteredCount(p) / routeConceptCount(p) : 0;
+  const logout = () => { void auth.logout(); };
 
   return (
     <div className="min-h-screen bg-bg text-fg">
@@ -654,11 +697,28 @@ export default function App() {
                 <Ring value={prog} size={48}><span className="font-mono text-[10px]">{pct(prog)}</span></Ring>
                 <div className="min-w-0"><div className="truncate text-[16px]">Cálculo Integral</div><div className="truncate text-sm text-muted">{p.diagnosed ? nextAction(p).state : "Sin diagnóstico"}</div></div>
               </button>
+              <button
+                onClick={logout}
+                disabled={auth.isLoggingOut}
+                className="flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-left text-[15px] text-muted transition hover:bg-raised hover:text-fg disabled:opacity-50"
+              >
+                <LogOut size={17} /> {auth.isLoggingOut ? "Cerrando sesión…" : "Cerrar sesión"}
+              </button>
             </div>
           </aside>
           <div className="min-w-0">
             <header className="sticky top-0 z-20 border-b border-line bg-bg/90 backdrop-blur lg:hidden">
-              <div className="flex items-center justify-between px-5 pt-3"><span className="text-2xl font-medium">Itinera</span></div>
+              <div className="flex items-center justify-between px-5 pt-3">
+                <span className="text-2xl font-medium">Itinera</span>
+                <button
+                  onClick={logout}
+                  disabled={auth.isLoggingOut}
+                  aria-label="Cerrar sesión"
+                  className="p-1 text-muted transition hover:text-fg disabled:opacity-50"
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
               <nav className="flex gap-1 overflow-x-auto px-3 py-2">
                 {NAV.map((n) => (
                   <button key={n.screen} onClick={() => nav(n.screen)} className={cx("shrink-0 rounded-full px-3.5 py-1.5 text-[15px]", activeGroup === n.screen ? "bg-raised text-fg" : "text-muted")}>{n.label}</button>

@@ -85,7 +85,15 @@ export interface AnswerResultDto {
 // Diagnóstico Inicial
 // ---------------------------------------------------------------------------
 
-export type DiagnosticEstado = 'PENDIENTE' | 'EN_PROGRESO' | 'FINALIZADO';
+export type DiagnosticEstado = 'PENDIENTE' | 'EN_PROGRESO' | 'FINALIZADO' | 'ABANDONADA';
+
+export interface DiagnosticAbandonmentDto {
+  id: string;
+  subjectId: string;
+  state: 'ABANDONADA';
+  score: number | null;
+  closedAt: string | null;
+}
 
 export interface DiagnosticSessionDto {
   id: string;

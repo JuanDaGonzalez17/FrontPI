@@ -23,6 +23,7 @@ export type {
   AnswerResultDto,
   DiagnosticEstado,
   DiagnosticSessionDto,
+  DiagnosticAbandonmentDto,
   ConceptMasteryDto,
   KnowledgeMasteryDto,
   DiagnosticProfileDto,

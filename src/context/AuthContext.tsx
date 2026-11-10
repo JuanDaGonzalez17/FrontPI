@@ -19,7 +19,8 @@ export interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  isLoggingOut: boolean;
   useDevAccount: () => void;
 }
 
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('cognia_token');
@@ -47,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
         .catch((error: unknown) => {
           if (error instanceof CogniaApiError && error.apiError.status === 401) {
-            authApi.logout();
+            authApi.clearLocalAuth();
             setToken(null);
             setUser(null);
             return;
@@ -89,11 +91,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser({ id: res.studentId, fullName: res.fullName, email: res.email ?? normalizedEmail });
   }, []);
 
-  const logout = useCallback(() => {
-    authApi.logout();
-    setToken(null);
-    setUser(null);
-  }, []);
+  const logout = useCallback(async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await authApi.logout(token);
+    } catch (error) {
+      console.warn('No se pudo cerrar la sesión en el servidor; se completó el cierre local.', error);
+    } finally {
+      setToken(null);
+      setUser(null);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      setIsLoggingOut(false);
+    }
+  }, [isLoggingOut, token]);
 
   const useDevAccount = useCallback(() => {
     localStorage.removeItem('cognia_token');
@@ -116,9 +127,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       logout,
+      isLoggingOut,
       useDevAccount,
     }),
-    [user, token, isLoading, login, register, logout, useDevAccount],
+    [user, token, isLoading, login, register, logout, isLoggingOut, useDevAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

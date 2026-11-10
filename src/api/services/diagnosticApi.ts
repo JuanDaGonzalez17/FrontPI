@@ -9,12 +9,13 @@
  *   4. getProfile(subjectId)             → devuelve la maestría estimada por concepto
  */
 
-import { apiGet, apiPost } from '../client';
+import { apiFetch, apiGet, apiPost } from '../client';
 import { toActivityDto, toBackendAnswer, type BackendActivityDto } from '../mappers/activityMapper';
 import type {
   DiagnosticSessionDto,
   AnswerPayload,
   DiagnosticProfileDto,
+  DiagnosticAbandonmentDto,
 } from '../types';
 
 /**
@@ -56,6 +57,19 @@ export function sendAnswer(
  */
 export function finishDiagnostic(sessionId: string): Promise<void> {
   return apiPost<void>(`/diagnostics/${sessionId}/finish`);
+}
+
+/**
+ * Abandona explícitamente una sesión de diagnóstico en progreso.
+ * La identidad se envía de forma explícita para evitar abandonar una sesión
+ * con un estudiante distinto al autenticado.
+ */
+export function abandonDiagnostic(sessionId: string, studentId: string): Promise<DiagnosticAbandonmentDto> {
+  return apiFetch<DiagnosticAbandonmentDto>(`/diagnostics/${sessionId}/abandon`, {
+    method: 'POST',
+    body: {},
+    headers: { 'X-Student-Id': studentId },
+  });
 }
 
 /**

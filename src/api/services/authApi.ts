@@ -8,7 +8,7 @@
  *   3. getMe()                             → obtiene el perfil del estudiante autenticado
  */
 
-import { apiGet, apiPost } from '../client';
+import { apiFetch, apiGet, apiPost } from '../client';
 
 // ---------------------------------------------------------------------------
 // DTOs de autenticación
@@ -80,9 +80,25 @@ export function getMe(): Promise<StudentDto> {
 }
 
 /**
- * Cierra la sesión borrando el token del localStorage.
+ * Solicita el cierre de sesión al backend. El token se elimina localmente
+ * aunque el backend no esté disponible.
  */
-export function logout(): void {
+export async function logout(token: string | null = localStorage.getItem('cognia_token')): Promise<void> {
+  try {
+    if (token) {
+      await apiFetch<void>('/auth/logout', {
+        method: 'POST',
+        body: {},
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+  } finally {
+    clearLocalAuth();
+  }
+}
+
+/** Elimina todas las credenciales y datos de identidad guardados localmente. */
+export function clearLocalAuth(): void {
   localStorage.removeItem('cognia_token');
   localStorage.removeItem('cognia_student_id');
   localStorage.removeItem('cognia_student_name');
