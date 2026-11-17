@@ -43,10 +43,25 @@ export function buildConceptMaps(concepts: ConceptDto[]): ConceptMaps {
   const slugToUuid: SlugToUuid = new Map();
   const conceptBySlug: Map<Id, ConceptDto> = new Map();
 
+  const normalize = (value: string) => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
   for (const c of concepts) {
     const code = c.code.trim().toUpperCase();
+    const backendName = normalize(c.name);
     const slug = OFFICIAL_CONCEPTS.find((concept) => concept.id.toUpperCase() === code)?.id
-      ?? CONCEPTS.find((concept) => concept.id.toUpperCase() === code)?.id;
+      ?? CONCEPTS.find((concept) => concept.id.toUpperCase() === code)?.id
+      ?? OFFICIAL_CONCEPTS.find((concept) => {
+        const frontendName = normalize(concept.name);
+        return backendName === frontendName
+          || backendName.startsWith(`${frontendName} `)
+          || frontendName.startsWith(`${backendName} `);
+      })?.id
+      ?? CONCEPTS.find((concept) => normalize(concept.name) === backendName)?.id;
     if (!slug) continue;
     uuidToSlug.set(c.id, slug);
     slugToUuid.set(slug, c.id);
