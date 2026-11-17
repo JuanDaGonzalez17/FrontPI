@@ -21,7 +21,8 @@ const NODE_TEXT: Record<Tone, string> = { sage: "text-sage", brass: "text-brass"
 
 export function KnowledgeGraph({ p, selected, onSelect, recognized = [] }: { p: Profile; selected?: Id | null; onSelect: (id: Id) => void; recognized?: Id[] }) {
   const routeIds = routeConcepts(p);
-  const concepts = routeIds.map(byId);
+  const routeSet = new Set(routeIds);
+  const concepts = ALL_CONCEPTS.filter((concept) => routeSet.has(concept.id));
   const width = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.col)) * GX) + W;
   const height = PAD * 2 + (Math.max(0, ...concepts.map((concept) => concept.row)) * GY) + H;
   const [prereqMap, setPrereqMap] = useState<Record<Id, Id[]>>(() => {

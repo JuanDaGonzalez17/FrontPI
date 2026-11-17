@@ -44,8 +44,9 @@ export function buildConceptMaps(concepts: ConceptDto[]): ConceptMaps {
   const conceptBySlug: Map<Id, ConceptDto> = new Map();
 
   for (const c of concepts) {
-    const slug = OFFICIAL_CONCEPTS.find((concept) => concept.id === c.code)?.id
-      ?? CONCEPTS.find((concept) => concept.id === c.code)?.id;
+    const code = c.code.trim().toUpperCase();
+    const slug = OFFICIAL_CONCEPTS.find((concept) => concept.id.toUpperCase() === code)?.id
+      ?? CONCEPTS.find((concept) => concept.id.toUpperCase() === code)?.id;
     if (!slug) continue;
     uuidToSlug.set(c.id, slug);
     slugToUuid.set(slug, c.id);
@@ -119,7 +120,7 @@ export function applyLearningPath(
 
   let current: Id | null = null;
 
-  for (const step of path.steps) {
+  for (const step of [...path.steps].sort((a, b) => a.order - b.order)) {
     const slug = maps.uuidToSlug.get(step.conceptId);
     if (!slug) continue;
     if (!np.routeConcepts.includes(slug)) np.routeConcepts.push(slug);

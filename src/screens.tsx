@@ -327,6 +327,9 @@ export function DiagSummary({ c }: { c: Ctx }) {
 function PathBoard({ c, hero }: { c: Ctx; hero?: boolean }) {
   const { p } = c;
   const [sel, setSel] = useState<Id | null>(p.current);
+  useEffect(() => {
+    if (p.current) setSel(p.current);
+  }, [p.current]);
   const shown = sel ?? p.current ?? "prim";
   return (
     <div className="grid gap-8 xl:grid-cols-[1fr_300px]">
