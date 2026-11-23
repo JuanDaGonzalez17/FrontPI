@@ -3,6 +3,7 @@ import { reviewApi } from "./api";
 import type { ReviewQueueItemDto, ReviewSessionResultDto, ReviewGradeSummaryDto } from "./api/types";
 import { Btn, FocusShell, Label, cx } from "./ui";
 import { ArrowRight } from "lucide-react";
+import { MathText } from "./components/MathText";
 
 interface Props {
   items: ReviewQueueItemDto[];
@@ -15,6 +16,7 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
   const [i, setI] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedGrade, setSelectedGrade] = useState<number | null>(null);
   const [amnesiaDetected, setAmnesiaDetected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [questionStart, setQuestionStart] = useState(Date.now());
@@ -25,6 +27,7 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
 
   const submit = async (g: number) => {
     if (!item) return;
+    setSelectedGrade(g);
     setSubmitting(true);
     setError(null);
     try {
@@ -43,6 +46,7 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
       } else {
         setI(i + 1);
         setRevealed(false);
+        setSelectedGrade(null);
         setQuestionStart(Date.now());
       }
     } catch (e) {
@@ -73,11 +77,15 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
       <div key={item.progressId} className="rise mx-auto max-w-2xl">
         <Label className="mb-3">Tarjeta {i + 1} de {items.length}</Label>
         <div className="rounded-md border border-line bg-surface p-6">
-          <div className="text-2xl leading-snug">{item.card.front}</div>
+          <div className="text-2xl leading-snug">
+            <MathText text={item.card.front} />
+          </div>
           {revealed && (
             <div className="mt-6 border-t border-line pt-6">
               <Label className="mb-2 text-sage">Respuesta</Label>
-              <div className="text-xl text-muted">{item.card.back}</div>
+              <div className="text-xl text-muted">
+                <MathText text={item.card.back} />
+              </div>
             </div>
           )}
         </div>
@@ -99,7 +107,7 @@ export function ReviewRunner({ items, sessionId, onDone, onExit }: Props) {
                   onClick={() => submit(g)}
                   className={cx(
                     "h-12 w-12 rounded-sm border font-mono text-lg transition",
-                    grade === g ? "border-brass bg-brass/10 text-brass" : "border-line bg-surface hover:bg-raised",
+                    selectedGrade === g ? "border-brass bg-brass/10 text-brass" : "border-line bg-surface hover:bg-raised",
                     submitting && "opacity-50",
                   )}
                 >
