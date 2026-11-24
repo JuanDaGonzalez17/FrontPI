@@ -28,7 +28,7 @@ export interface Concept {
   objective: string;
 }
 
-export const THRESH = 0.7;
+export const THRESH = 0.8;
 
 export const CONCEPTS: Concept[] = [
   { id: "prim", name: "Funciones primitivas", col: 1, row: 0, prereqs: [], objective: "Reconocer una primitiva y entender por qué la antiderivada no es única." },

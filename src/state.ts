@@ -26,6 +26,7 @@ export interface Profile {
   mastery: Record<Id, number>;
   current: Id | null;
   reinforce: Id[];
+  mastered: Id[];
   weakSkills: string[];
   evalAttempts: number;
   practiceDone: boolean;
@@ -66,7 +67,11 @@ export interface GlobalResult {
 export const zero = () => Object.fromEntries(ALL_CONCEPTS.map((c) => [c.id, 0])) as Record<Id, number>;
 
 export const status = (p: Profile, id: Id): Status =>
-  p.reinforce.includes(id) ? "reinforce" : p.mastery[id] >= THRESH ? "mastered" : "pending";
+  p.reinforce.includes(id)
+    ? "reinforce"
+    : (p.mastered?.includes(id) || p.mastery[id] >= THRESH)
+      ? "mastered"
+      : "pending";
 
 export const firstOpen = (p: Profile): Id | null =>
   CONCEPTS.find((c) => status(p, c.id) !== "mastered")?.id ?? null;
@@ -111,7 +116,7 @@ export function nextAction(p: Profile): NextAction {
 }
 
 export const fresh = (): Profile => ({
-  diagnosed: false, routeComplete: false, routeConcepts: [], routeDetails: {}, mastery: zero(), current: null, reinforce: [], weakSkills: [],
+  diagnosed: false, routeComplete: false, routeConcepts: [], routeDetails: {}, mastery: zero(), current: null, reinforce: [], mastered: [], weakSkills: [],
   evalAttempts: 0, practiceDone: false, reinforceDone: false, history: [], reviews: {},
 });
 

@@ -130,6 +130,7 @@ export function applyLearningPath(
     routeDetails: {},
     mastery: { ...profile.mastery },
     reinforce: [],
+    mastered: [],
     reviews: { ...profile.reviews },
   };
 
@@ -145,7 +146,8 @@ export function applyLearningPath(
 
     switch (step.state) {
       case 'DOMINADO':
-        np.mastery[slug] = Math.max(np.mastery[slug] ?? 0, 0.75);
+        np.mastered.push(slug);
+        np.mastery[slug] = Math.max(np.mastery[slug] ?? 0, 0.8);
         break;
       case 'REFUERZO':
         np.reinforce.push(slug);

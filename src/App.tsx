@@ -235,16 +235,19 @@ export default function App() {
     else warnings.push(...activity.value.warnings);
     if (knowledge.status === "rejected") { console.warn("No se pudo actualizar el dominio.", knowledge.reason); warnings.push("dominio"); }
     if (route.status === "rejected") { console.warn("No se pudo actualizar la ruta.", route.reason); warnings.push("ruta"); }
+    let updatedNext: Profile | null = null;
     setP((previous) => {
       let next = { ...previous };
       if (activity.status === "fulfilled") next = { ...next, ...(activity.value.history ? { history: activity.value.history } : {}), ...(activity.value.reviews ? { reviews: activity.value.reviews } : {}) };
       if (knowledge.status === "fulfilled") next = { ...next, mastery: { ...next.mastery, ...knowledge.value.mastery } };
       if (route.status === "fulfilled") next = applyLearningPath(next, route.value.path, route.value.maps);
+      updatedNext = next;
       return next;
     });
     if (knowledge.status === "fulfilled") setRecognized(recognizedIds(knowledge.value.mastery));
     if (route.status === "fulfilled") setLearningPath(route.value.path);
     setSyncWarning(warnings.length ? `No se pudo actualizar ${warnings.join(", ")}. Reintenta para sincronizar.` : null);
+    return updatedNext;
   }, [refreshHistory, refreshKnowledgeProfile]);
 
   const finishDiagnostic = useCallback(
@@ -319,6 +322,8 @@ export default function App() {
       const id = p.current!;
       const score = Math.round(result.score);
       const passed = result.passed;
+      setP((previous) => ({ ...previous, evalAttempts: previous.evalAttempts + 1 }));
+      const updatedProfile = await synchronizeProgress();
       setEvalResult({
         id,
         score,
@@ -326,10 +331,8 @@ export default function App() {
         skills: [],
         weak: [],
         attempt: p.evalAttempts + 1,
-        nextId: p.current,
+        nextId: updatedProfile?.current ?? null,
       });
-      setP((previous) => ({ ...previous, evalAttempts: previous.evalAttempts + 1 }));
-      await synchronizeProgress();
       nav("eval-result");
     },
     [p.current, p.evalAttempts, synchronizeProgress, nav],
