@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Award, Check, Eye, Lightbulb, RotateCcw, ShieldCheck } from "lucide-react";
-import { ACTIVITIES, REINFORCE, REVIEWS, byId, norm, unlocks, type Activity, type Id } from "./data";
+import { ACTIVITIES, REINFORCE, REVIEWS, THRESH, byId, norm, unlocks, type Activity, type Id } from "./data";
 import type { Ctx } from "./screens";
 import { conceptDescription, conceptName, dueLabel, dueList, dueToday, isRouteComplete, levelOf, routeConceptCount, routeConcepts, routeMasteredCount, nextAction, overallMastery, status } from "./state";
 import { Bar, Btn, Card, CycleStrip, Difficulty, Expr, FocusShell, Label, Mark, PageHeader, Pill, Ring, StatusIcon, cx, pct } from "./ui";
@@ -78,7 +78,7 @@ export function ConceptScreen({ c }: { c: Ctx }) {
               <Ring value={p.mastery[k.id]} size={92} tone={tone}><span className="text-2xl font-medium">{Math.round(p.mastery[k.id] * 100)}</span><span className="-mt-1 font-mono text-[10px] text-muted">/ 100</span></Ring>
               <p className="text-[15px] text-muted">Necesitas <b className="text-fg">70</b> en la evaluación para avanzar.</p>
             </div>
-            <div className="mt-5"><Bar value={p.mastery[k.id]} tone={tone} threshold={0.7} /></div>
+            <div className="mt-5"><Bar value={p.mastery[k.id]} tone={tone} threshold={THRESH} /></div>
           </Card>
           <Card className="p-6">
             <Label className="mb-3">Dónde estás en el ciclo</Label>
@@ -354,7 +354,7 @@ export function ReviewResultScreen({ c }: { c: Ctx }) {
       </div>
 
       <div className="mt-6 grid gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-2">
-        <div className="bg-surface p-5"><Label className="mb-2">Dominio</Label><div className="mb-2 text-3xl font-medium">{r.mastery === null ? "—" : pct(r.mastery)}</div>{r.mastery !== null && <Bar value={r.mastery} tone={tone === "brass" ? "brass" : tone} threshold={0.7} />}</div>
+        <div className="bg-surface p-5"><Label className="mb-2">Dominio</Label><div className="mb-2 text-3xl font-medium">{r.mastery === null ? "—" : pct(r.mastery)}</div>{r.mastery !== null && <Bar value={r.mastery} tone={tone === "brass" ? "brass" : tone} threshold={THRESH} />}</div>
         <div className="bg-surface p-5"><Label className="mb-2">{out ? "Estado" : "Próximo repaso"}</Label><div className="text-2xl">{out ? "Vuelve a tu ruta" : r.nextDays === null ? "—" : dueLabel(r.nextDays)}</div></div>
       </div>
 
@@ -411,7 +411,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
               <div key={k.id} className="flex items-center gap-3">
                     <span className={cx("w-4", s === "mastered" ? "text-sage" : s === "reinforce" ? "text-clay" : cur ? "text-brass" : "text-faint")}><StatusIcon s={s} current={cur} size={14} /></span>
                     <span className={cx("w-52 shrink-0 truncate text-[16px]", s === "pending" && !cur && "text-muted")}>{conceptName(p, k.id)}</span>
-                    <Bar value={p.mastery[k.id]} tone={s === "mastered" ? "sage" : s === "reinforce" ? "clay" : "brass"} threshold={0.7} />
+                    <Bar value={p.mastery[k.id]} tone={s === "mastered" ? "sage" : s === "reinforce" ? "clay" : "brass"} threshold={THRESH} />
                     <span className="w-10 text-right font-mono text-xs text-muted">{pct(p.mastery[k.id])}</span>
                   </div>
                 );
@@ -438,7 +438,7 @@ export function ProgressScreen({ c }: { c: Ctx }) {
         <div className="space-y-5">
           <Card className="p-6">
             <Label className="mb-3">Concepto actual</Label>
-            {p.current ? (<><div className="text-xl">{byId(p.current).name}</div><div className="mb-4 mt-2"><Bar value={p.mastery[p.current]} tone={reinf ? "clay" : "brass"} threshold={0.7} /></div><Btn className="w-full" onClick={() => c.nav(nextAction(p).screen)}>{nextAction(p).label}</Btn></>) : <p className="text-muted">{complete ? "Ruta completada." : "No hay un paso actual cargado; abre tu ruta para actualizarla."}</p>}
+            {p.current ? (<><div className="text-xl">{byId(p.current).name}</div><div className="mb-4 mt-2"><Bar value={p.mastery[p.current]} tone={reinf ? "clay" : "brass"} threshold={THRESH} /></div><Btn className="w-full" onClick={() => c.nav(nextAction(p).screen)}>{nextAction(p).label}</Btn></>) : <p className="text-muted">{complete ? "Ruta completada." : "No hay un paso actual cargado; abre tu ruta para actualizarla."}</p>}
           </Card>
           <Card className="p-6">
             <Label className="mb-3 text-clay">Necesitan refuerzo</Label>

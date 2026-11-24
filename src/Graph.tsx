@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { ALL_CONCEPTS, byId, type Id } from "./data";
+import { ALL_CONCEPTS, byId, THRESH, type Id } from "./data";
 import { conceptDescription, conceptName, routeConcepts, status, type Profile } from "./state";
 import { Bar, Btn, Label, Pill, StatusIcon, cx, pct, statusTone, type Tone } from "./ui";
 import { curriculumApi, buildConceptMaps } from "./api";
@@ -163,9 +163,9 @@ export function ConceptDetail({ id, p, onGo }: { id: Id; p: Profile; onGo?: () =
       <div>
         <div className="mb-1.5 flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted">
           <span>Dominio</span>
-          <span>{pct(p.mastery[id])} · umbral 70%</span>
+          <span>{pct(p.mastery[id])} · umbral {Math.round(THRESH * 100)}%</span>
         </div>
-        <Bar value={p.mastery[id]} tone={tone} threshold={0.7} />
+        <Bar value={p.mastery[id]} tone={tone} threshold={THRESH} />
       </div>
       <p className="text-[15px] italic text-muted">“{conceptDescription(p, id)}”</p>
       <div>

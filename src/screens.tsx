@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, CalendarClock, Check, Compass, Lock, MapPin, Sparkles } from "lucide-react";
-import { byId, unlocks, type Id } from "./data";
+import { byId, THRESH, unlocks, type Id } from "./data";
 import { ConceptDetail, KnowledgeGraph, Legend } from "./Graph";
 import {
   conceptName, dueLabel, dueList, dueToday, isRouteComplete, routeConceptCount, routeMasteredCount, routeConcepts, nextAction, overallMastery, status,
@@ -69,19 +69,24 @@ function NextStepCard({ c }: { c: Ctx }) {
             {p.reinforce.includes(cur.id) ? "Todavía hay habilidades por afianzar antes de continuar. Te propusimos práctica específica." : `Es el siguiente eslabón de tu ruta y abre: ${unlocks(cur.id).filter((u) => routeConcepts(p).includes(u.id)).map((u) => conceptName(p, u.id)).join(", ") || "el cierre de la asignatura"}.`}
           </p>
           <div className="mt-5 max-w-md">
-            <div className="mb-1.5 flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted"><span>Dominio actual</span><span>{pct(p.mastery[cur.id])} / meta 70%</span></div>
-            <Bar value={p.mastery[cur.id]} tone={a.tone} threshold={0.7} />
+            <div className="mb-1.5 flex justify-between font-mono text-[11px] uppercase tracking-wider text-muted"><span>Dominio actual</span><span>{pct(p.mastery[cur.id])} / meta {Math.round(THRESH * 100)}%</span></div>
+            <Bar value={p.mastery[cur.id]} tone={a.tone} threshold={THRESH} />
           </div>
         </>
-      ) : (
+      ) : isRouteComplete(p) ? (
         <>
           <h2 className="mt-4 text-3xl font-medium md:text-4xl">Has completado tu ruta de aprendizaje</h2>
           <p className="mt-3 max-w-xl text-lg text-muted">Has dominado los {routeConceptCount(p)} conceptos de tu ruta. Falta confirmar tu dominio general con la evaluación global.</p>
         </>
+      ) : (
+        <>
+          <h2 className="mt-4 text-3xl font-medium md:text-4xl">Ruta pendiente de actualización</h2>
+          <p className="mt-3 max-w-xl text-lg text-muted">Tu ruta aún tiene conceptos pendientes, pero no hay un paso activo cargado. Abre tu ruta para actualizarla.</p>
+        </>
       )}
       <div className="mt-7 flex flex-wrap items-center gap-3">
         <Btn size="lg" onClick={() => c.nav(a.screen)} icon={<ArrowRight size={18} />}>{a.label}</Btn>
-        {p.diagnosed && <Btn variant="ghost" size="lg" onClick={() => c.nav("path")}>Ver mi ruta</Btn>}
+        {p.diagnosed && a.screen !== "path" && <Btn variant="ghost" size="lg" onClick={() => c.nav("path")}>Ver mi ruta</Btn>}
       </div>
     </Card>
   );
@@ -312,7 +317,7 @@ export function DiagSummary({ c }: { c: Ctx }) {
             <div key={i} className="flex items-center gap-4 px-6 py-4">
               <span className={cx(t === "sage" ? "text-sage" : "text-muted")}><StatusIcon s={s} size={16} /></span>
               <div className="w-56 text-lg">{byId(i).name}</div>
-              <div className="flex-1"><Bar value={p.mastery[i]} tone={s === "mastered" ? "sage" : "brass"} threshold={0.7} /></div>
+              <div className="flex-1"><Bar value={p.mastery[i]} tone={s === "mastered" ? "sage" : "brass"} threshold={THRESH} /></div>
               <div className="w-12 text-right font-mono text-sm">{pct(p.mastery[i])}</div>
             </div>
           );

@@ -69,7 +69,7 @@ export const zero = () => Object.fromEntries(ALL_CONCEPTS.map((c) => [c.id, 0]))
 export const status = (p: Profile, id: Id): Status =>
   p.reinforce.includes(id)
     ? "reinforce"
-    : (p.mastered?.includes(id) || p.mastery[id] >= THRESH)
+    : (p.mastered?.includes(id) || (!p.routeConcepts.includes(id) && p.mastery[id] >= THRESH))
       ? "mastered"
       : "pending";
 
